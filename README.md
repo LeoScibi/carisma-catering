@@ -1,82 +1,101 @@
-# Carisma Ops — Internal Web App (v1)
+# Carisma Ops — Ingredients, Suppliers & Recipes (v2)
 
-Built on the OAuth + Google Sheets API pattern already validated in
-`sheet-demo-oauth.html`. Same architecture, extended into a proper multi-page
-app: shared config, shared sign-in session, and two working tools —
-**Ingredients** and **Quotes**.
+Same architecture as before — static site, GitHub Pages, direct-to-Sheets via
+OAuth, no server — replacing the flat 15-column ingredient schema with a
+proper normalized structure: generic ingredients, suppliers, per-supplier
+pricing, and recipes that can nest other recipes as sub-recipe components.
 
 ## What's here
 ```
-index.html        Dashboard: config, sign-in, nav
-setup.html         Auto-creates the required tabs + header rows — run this first
-ingredients.html   Ingredient database (add + browse, 15-column schema)
-quotes.html        Quote builder (menu/tier + guests -> total, saves to log)
-css/style.css       Shared styling
-js/config.js        Shared config storage + Google auth
-js/sheets.js         Shared Sheets API read/append/batchUpdate helpers
+index.html                Dashboard: config, sign-in, nav
+setup.html                 Auto-creates the five required tabs + headers — run this first
+ingredients.html            Generic ingredient master list (no cost)
+suppliers.html               Supplier list
+supplier-ingredients.html     Links ingredient + supplier + pack size/unit + price (cost lives here)
+recipes.html                  Create recipes, add lines (ingredients or sub-recipes), see rolled-up cost
+css/style.css                 Shared styling
+js/config.js                  Shared config storage + Google auth
+js/sheets.js                   Shared Sheets API read/append/update/batchUpdate helpers
+js/units.js                    Shared weight/volume/unit conversion + ID generation
 ```
 
-## Spreadsheet setup — now automatic
-You no longer need to manually create tabs or type header rows. Point the
-app at any spreadsheet (existing or brand new) and go to **Setup**. It will:
+## The data model
+- **Ingredients** — generic, no price. Just name, category, and a locked
+  **measure type**: `Weight`, `Volume`, or `Unit`. This is how the ingredient
+  is always used in a recipe, regardless of how any supplier packages it.
+- **Suppliers** — just your supplier list.
+- **SupplierIngredients** — the link table, and the only place cost lives.
+  One row per ingredient + supplier combination: pack size, pack unit (must
+  be in the same family as the ingredient's measure type — kg/g for Weight,
+  L/ml for Volume, pc for Unit), price, and a calculated cost per base unit.
+  The same ingredient can have several rows here, one per supplier.
+- **Recipes** — a recipe is also a "thing" with its own measure type and
+  yield (e.g. this recipe makes 2 kg, or 500 ml, or 12 pc). That's what lets
+  a finished recipe be used as a component inside another recipe — a
+  sub-recipe, treated exactly like an ingredient once it's built.
+- **RecipeLines** — one row per component (ingredient or sub-recipe) inside
+  a recipe: quantity, unit, and for ingredients, which supplier's price to
+  use. Defaults to the cheapest supplier automatically but can be manually
+  overridden per line. Recipe totals recalculate and get written back to the
+  Recipes tab every time a line is added.
 
-1. Check which of the three required tabs already exist:
-   `Ingredients`, `MenuItems`, `Quotes`
-2. Create any that are missing, via the Sheets API (`spreadsheets.batchUpdate`)
-3. Write the correct header row into any tab that's still empty, and bold it
+Everything converts through the same simple logic: grams ↔ kilos,
+millilitres ↔ litres — metric only, no imperial, no generic conversion
+engine, just fixed multipliers within each family.
 
-Safe to re-run any time — it only creates what's missing and only writes
-headers into tabs that don't already have one, so it won't overwrite data.
+## Spreadsheet setup — automatic
+Point the app at any spreadsheet (existing or brand new) and go to
+**Setup**. It creates whichever of the five required tabs are missing —
+`Ingredients`, `Suppliers`, `SupplierIngredients`, `Recipes`, `RecipeLines`
+— and writes the correct header row into any tab that's still empty. Safe
+to re-run any time; it never overwrites a tab that already has a header.
 
-**MenuItems** is the one tab you still need to add real data to — Setup only
-creates the header row (`MENU | TIER | PRICE PER PERSON | NOTES`). Add one
-row per menu/tier combination directly in Sheets, e.g.:
-```
-Lunch | Essenziale | 18.00 | Boxed/individual
-Lunch | Condiviso | 26.00 | Sharing platters
-Lunch | Di Lusso | 38.00 | Hot dish, staffing required
-Canapes & Evening | Reception | 24.00 |
-```
-Placeholder prices are fine until the pricing exercise wraps.
+## Suggested order of use
+1. **Setup** — create the tabs.
+2. **Ingredients** — add your generic ingredients with their measure type.
+3. **Suppliers** — add your suppliers.
+4. **Supplier Prices** — for each ingredient, add at least one supplier's
+   pack size, pack unit, and price.
+5. **Recipes** — create a recipe (e.g. a sub-recipe like a base sauce
+   first), add its lines, then use it as a component inside another recipe.
 
 ## Deploying
-Same GitHub Pages repo as the demo (`carisma-catering`,
+Same GitHub Pages repo as before (`carisma-catering`,
 `leoscibi.github.io/carisma-catering`):
 
-1. Copy this `app/` folder's contents into the repo (or a subfolder, e.g. `app/`).
+1. Copy this folder's contents into the repo (e.g. replacing the old `app/`
+   folder, or into a new `app2/` if you want to keep both versions live).
 2. Commit and push — GitHub Pages serves it automatically.
 3. Open `index.html` on the live site, paste your OAuth Client ID and
-   Spreadsheet ID, click **Save config**, then **Sign in with Google**.
+   Spreadsheet ID (can be the same spreadsheet as before, or a fresh one —
+   this uses five new tab names, so it won't collide with the old
+   `Ingredients`/`MenuItems`/`Quotes` tabs if you point it at the same file).
 4. Go to **Setup** and click **Check & create tabs**.
-5. Navigate to Ingredients or Quotes — the session carries over, no
-   re-entering config or re-signing in per page (until the token expires
-   after ~1hr).
+5. Add ingredients → suppliers → supplier prices → recipes, in that order.
 
-No changes needed to your OAuth Client ID or authorized origin — same origin
-as the existing demo. Note: the OAuth scope already in use
-(`https://www.googleapis.com/auth/spreadsheets`) covers structural changes
-like adding tabs, so no new consent screen or scope approval is needed.
+No changes needed to your OAuth Client ID or authorized origin.
 
-## What carried over from the demo
-- Same OAuth flow (Google Identity Services, `spreadsheets` scope)
-- Same gotchas apply: Spreadsheet ID only (not full URL); test users must be
-  added manually while the consent screen is in Testing mode; tokens last
-  ~1hr with no silent refresh yet.
-
-## What's new in this build
-- Config + sign-in session now shared across pages via `localStorage`,
-  instead of re-entering everything per page.
-- Ingredients: required-field validation (Ingredient, Code) and a
-  duplicate-code check against existing rows before adding.
-- Quotes: reads live pricing from `MenuItems`, calculates subtotal/fees/total
-  in real time, and logs every saved quote.
+## Known limitations
+- No edit/delete yet on any tab — add + view only, same as the previous
+  version. Fixing a mistake currently means editing the row directly in
+  Google Sheets.
+- A recipe's cost only recalculates when a line is *added* — if you edit a
+  supplier's price after the fact, existing recipe lines won't reflect the
+  new price until you re-add a line (or we build a "recalculate" button).
+- No circular-reference check — nothing stops a recipe being added as a
+  sub-recipe of itself two levels down. Keep sub-recipe chains shallow for
+  now.
+- The old `Ingredients`/`MenuItems`/`Quotes` v1 app (dashboard, ingredient
+  form, quote builder) still exists separately — this is a parallel v2
+  focused purely on the costing model. Once this is validated, the quote
+  builder can be rebuilt on top of it to pull real recipe costs instead of
+  the flat `MenuItems` placeholder pricing.
 
 ## Suggested next steps
-1. Seed `MenuItems` with real tiers/prices once the pricing exercise wraps.
-2. Add edit/delete for ingredients (currently add + view only — Sheets API
-   updates need the row number, which the app doesn't track yet).
-3. Handle token expiry gracefully mid-session (currently: API calls just
-   error out after ~1hr; a redirect-to-sign-in-again flow would be smoother).
-4. Inflation tracker as the next tool, once Ingredients/Quotes are in daily use.
-5. Optionally extend Setup to also seed starter `MenuItems` rows automatically
-   once your real tiered pricing is finalized.
+1. Add a "Recalculate cost" button on Recipes to re-sum an existing
+   recipe's lines on demand, for when a supplier price changes.
+2. Edit/delete for all five tabs (needs row-number tracking).
+3. Rebuild the quote builder on top of real recipe costs instead of
+   placeholder `MenuItems` pricing.
+4. A simple margin/markup field on Recipes, so quoted price vs. cost is
+   visible at a glance.

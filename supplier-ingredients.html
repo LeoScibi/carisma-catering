@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Carisma Ops — Supplier Prices</title>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<header class="app-header">
+  <div class="brand">Carisma <span>Ops</span></div>
+  <nav class="app-nav">
+    <a href="index.html">Dashboard</a>
+    <a href="ingredients.html">Ingredients</a>
+    <a href="suppliers.html">Suppliers</a>
+    <a href="supplier-ingredients.html" class="active">Supplier Prices</a>
+    <a href="recipes.html">Recipes</a>
+    <a href="setup.html">Setup</a>
+  </nav>
+</header>
+
+<main>
+  <h1>Supplier Prices</h1>
+  <p class="sub">Links an ingredient to a supplier: pack size, pack unit, and price. This is the only place cost lives — the same ingredient can have several rows here, one per supplier, and recipes pick the cheapest by default.</p>
+
+  <div id="signedOutNotice" class="card" style="display:none;">
+    <span class="badge off">Not signed in</span>
+    <p style="font-size:13px; color:var(--muted); margin-bottom:0;">Go to the <a href="index.html">Dashboard</a> to sign in — your session will carry over here.</p>
+  </div>
+
+  <div class="card" id="formCard" style="display:none;">
+    <h2 style="margin-top:0;">Add supplier price</h2>
+    <form id="addForm">
+      <div class="field-row">
+        <div>
+          <label style="margin-top:0;">Ingredient *</label>
+          <select id="f_ingredient" required><option value="">Loading ingredients...</option></select>
+        </div>
+        <div>
+          <label style="margin-top:0;">Supplier *</label>
+          <select id="f_supplier" required><option value="">Loading suppliers...</option></select>
+        </div>
+      </div>
+      <div class="field-row three">
+        <div><label>Pack size *</label><input id="f_packsize" type="number" step="0.01" min="0" required></div>
+        <div>
+          <label>Pack unit *</label>
+          <select id="f_packunit" required><option value="">Choose ingredient first</option></select>
+        </div>
+        <div><label>Price (£) *</label><input id="f_price" type="number" step="0.01" min="0" required></div>
+      </div>
+      <div class="totals" id="calcBox">
+        <div class="line"><span>Cost per base unit</span><span id="t_costperbase">—</span></div>
+      </div>
+      <button type="submit" id="addBtn">Add supplier price</button>
+      <button type="button" id="reloadBtn" class="secondary">Reload list</button>
+    </form>
+    <div id="status" class="status-line"></div>
+  </div>
+
+  <h2>All supplier prices</h2>
+  <table id="rowsTable" style="display:none;">
+    <thead><tr><th>Ingredient</th><th>Supplier</th><th>Pack size</th><th>Pack unit</th><th>Price</th><th>Cost / base unit</th></tr></thead>
+    <tbody id="tableBody"></tbody>
+  </table>
+</main>
+
+<script src="js/config.js"></script>
+<script src="js/sheets.js"></script>
+<script src="js/units.js"></script>
+<script>
+  const SI_RANGE = 'SupplierIngredients!A:G';
+  const SI_HEADERS = ['ID','INGREDIENT ID','SUPPLIER ID','PACK SIZE','PACK UNIT','PRICE','COST PER BASE UNIT'];
+  const ING_RANGE = 'Ingredients!A:H';
+  const SUP_RANGE = 'Suppliers!A:D';
+
+  const status = document.getElementById('status');
+  let token = null;
+  let ingredients = []; // {id, name, measureType, baseUnit}
+  let suppliers = [];   // {id, name}
+  let siRows = [SI_HEADERS];
+
+  function setStatus(msg, kind) {
+    status.textContent = msg;
+    status.className = 'status-line' + (kind ? ' ' + kind : '');
+  }
+
+  function requireAuth() {
+    const cfg = getStoredConfig();
+    token = tryResumeSession();
+    if (!token || !cfg.spreadsheetId) {
+      document.getElementById('signedOutNotice').style.display = 'block';
+      document.getElementById('formCard').style.display = 'none';
+      return false;
+    }
+    document.getElementById('signedOutNotice').style.display = 'none';
+    document.getElementById('formCard').style.display = 'block';
+    return true;
+  }
+
+  function currentIngredient() {
+    const id = document.getElementById('f_ingredient').value;
+    return ingredients.find(i => i.id === id);
+  }
+
+  function refreshPackUnitOptions() {
+    const ing = currentIngredient();
+    const sel = document.getElementById('f_packunit');
+    if (!ing) { sel.innerHTML = '<option value="">Choose ingredient first</option>'; return; }
+    sel.innerHTML = unitsForType(ing.measureType).map(u => `<option value="${u}">${u}</option>`).join('');
+    recalc();
+  }
+
+  function recalc() {
+    const ing = currentIngredient();
+    const packSize = parseFloat(document.getElementById('f_packsize').value);
+    const packUnit = document.getElementById('f_packunit').value;
+    const price = parseFloat(document.getElementById('f_price').value);
+    const box = document.getElementById('t_costperbase');
+    if (!ing || !packSize || !packUnit || !price) { box.textContent = '—'; return null; }
+    const baseAmount = toBaseAmount(ing.measureType, packSize, packUnit);
+    if (!baseAmount) { box.textContent = '—'; return null; }
+    const costPerBase = price / baseAmount;
+    box.textContent = `${fmtMoney2(costPerBase)} per ${ing.baseUnit}`;
+    return costPerBase;
+  }
+
+  async function loadLookups() {
+    const cfg = getStoredConfig();
+    const [ingRows, supRows] = await Promise.all([
+      sheetsGet(cfg.spreadsheetId, ING_RANGE, token),
+      sheetsGet(cfg.spreadsheetId, SUP_RANGE, token)
+    ]);
+    ingredients = (ingRows.slice(1) || []).map(r => ({ id: r[0], name: r[1], measureType: r[3], baseUnit: r[4] })).filter(i => i.id);
+    suppliers = (supRows.slice(1) || []).map(r => ({ id: r[0], name: r[1] })).filter(s => s.id);
+
+    const ingSel = document.getElementById('f_ingredient');
+    ingSel.innerHTML = ingredients.length
+      ? ingredients.map(i => `<option value="${i.id}">${i.name} (${i.measureType})</option>`).join('')
+      : '<option value="">No ingredients yet — add one first</option>';
+
+    const supSel = document.getElementById('f_supplier');
+    supSel.innerHTML = suppliers.length
+      ? suppliers.map(s => `<option value="${s.id}">${s.name}</option>`).join('')
+      : '<option value="">No suppliers yet — add one first</option>';
+
+    refreshPackUnitOptions();
+  }
+
+  async function loadRows() {
+    const cfg = getStoredConfig();
+    setStatus('Loading...');
+    try {
+      const rows = await sheetsGet(cfg.spreadsheetId, SI_RANGE, token);
+      siRows = rows.length ? rows : [SI_HEADERS];
+      renderTable();
+      setStatus(`Loaded ${Math.max(siRows.length - 1, 0)} supplier price(s).`, 'ok');
+    } catch (err) {
+      setStatus('Error loading: ' + err.message, 'error');
+    }
+  }
+
+  function ingredientName(id) { const i = ingredients.find(x => x.id === id); return i ? i.name : id; }
+  function supplierName(id) { const s = suppliers.find(x => x.id === id); return s ? s.name : id; }
+
+  function renderTable() {
+    const table = document.getElementById('rowsTable');
+    const body = document.getElementById('tableBody');
+    const rest = siRows.slice(1);
+    if (!rest.length) { table.style.display = 'none'; return; }
+    body.innerHTML = rest.map(r => `
+      <tr>
+        <td>${ingredientName(r[1])}</td>
+        <td>${supplierName(r[2])}</td>
+        <td>${r[3] ?? ''}</td>
+        <td>${r[4] ?? ''}</td>
+        <td>${fmtMoney2(parseFloat(r[5]) || 0)}</td>
+        <td>${fmtMoney2(parseFloat(r[6]) || 0)}</td>
+      </tr>
+    `).join('');
+    table.style.display = 'table';
+  }
+
+  document.getElementById('f_ingredient').addEventListener('change', refreshPackUnitOptions);
+  ['f_packsize', 'f_packunit', 'f_price'].forEach(id =>
+    document.getElementById(id).addEventListener('input', recalc)
+  );
+
+  document.getElementById('addForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (!requireAuth()) return;
+
+    const ing = currentIngredient();
+    const supplierId = document.getElementById('f_supplier').value;
+    const packSize = parseFloat(document.getElementById('f_packsize').value);
+    const packUnit = document.getElementById('f_packunit').value;
+    const price = parseFloat(document.getElementById('f_price').value);
+
+    if (!ing || !supplierId || !packSize || !packUnit || !price) {
+      setStatus('All fields are required.', 'error'); return;
+    }
+    const costPerBase = recalc();
+    if (costPerBase === null) { setStatus('Could not calculate cost per base unit — check the values.', 'error'); return; }
+
+    const cfg = getStoredConfig();
+    setStatus('Adding supplier price...');
+    try {
+      const existing = await sheetsGet(cfg.spreadsheetId, SI_RANGE, token);
+      const rows = existing.length ? existing : [SI_HEADERS];
+      const id = nextId(rows, 'SI');
+      const row = [id, ing.id, supplierId, packSize, packUnit, price.toFixed(2), costPerBase.toFixed(4)];
+      await sheetsAppend(cfg.spreadsheetId, SI_RANGE, row, token);
+      setStatus(`Supplier price ${id} added.`, 'ok');
+      e.target.reset();
+      document.getElementById('t_costperbase').textContent = '—';
+      loadRows();
+    } catch (err) {
+      setStatus('Error: ' + err.message, 'error');
+    }
+  });
+
+  document.getElementById('reloadBtn').addEventListener('click', () => { loadLookups(); loadRows(); });
+
+  window.addEventListener('load', async () => {
+    if (requireAuth()) {
+      setStatus('Loading ingredients and suppliers...');
+      try {
+        await loadLookups();
+        await loadRows();
+      } catch (err) {
+        setStatus('Error loading lookups: ' + err.message, 'error');
+      }
+    }
+  });
+</script>
+</body>
+</html>

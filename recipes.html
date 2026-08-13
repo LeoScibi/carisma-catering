@@ -1,0 +1,475 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Carisma Ops — Recipes</title>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<header class="app-header">
+  <div class="brand">Carisma <span>Ops</span></div>
+  <nav class="app-nav">
+    <a href="index.html">Dashboard</a>
+    <a href="ingredients.html">Ingredients</a>
+    <a href="suppliers.html">Suppliers</a>
+    <a href="supplier-ingredients.html">Supplier Prices</a>
+    <a href="recipes.html" class="active">Recipes</a>
+    <a href="setup.html">Setup</a>
+  </nav>
+</header>
+
+<main>
+  <h1>Recipes</h1>
+  <p class="sub">Build a recipe from ingredients or other recipes (sub-recipes). Each line costs to the cheapest supplier by default — switch it per line if you want a different one.</p>
+
+  <div id="signedOutNotice" class="card" style="display:none;">
+    <span class="badge off">Not signed in</span>
+    <p style="font-size:13px; color:var(--muted); margin-bottom:0;">Go to the <a href="index.html">Dashboard</a> to sign in — your session will carry over here.</p>
+  </div>
+
+  <div id="appBody" style="display:none;">
+
+    <div class="card">
+      <h2 style="margin-top:0;">Create recipe</h2>
+      <form id="newRecipeForm">
+        <div class="field-row">
+          <div><label style="margin-top:0;">Name *</label><input id="nr_name" required></div>
+          <div>
+            <label style="margin-top:0;">Type *</label>
+            <select id="nr_type" required>
+              <option value="Dish">Dish</option>
+              <option value="Sub-recipe">Sub-recipe</option>
+            </select>
+          </div>
+        </div>
+        <div class="field-row three">
+          <div>
+            <label>Yield measure type *</label>
+            <select id="nr_measuretype" required>
+              <option value="">Choose one...</option>
+              <option value="Weight">Weight</option>
+              <option value="Volume">Volume</option>
+              <option value="Unit">Unit</option>
+            </select>
+          </div>
+          <div><label>Yield amount *</label><input id="nr_yieldamount" type="number" step="0.01" min="0" required></div>
+          <div>
+            <label>Yield unit *</label>
+            <select id="nr_yieldunit" required><option value="">Choose measure type first</option></select>
+          </div>
+        </div>
+        <p class="hint">This is the portion size — e.g. this recipe makes 2 kg, or 500 ml, or 12 pc — the same weight/volume/unit logic used everywhere else. It's what lets this recipe be used as a component inside another one.</p>
+        <button type="submit" id="nr_addBtn">Create recipe</button>
+      </form>
+      <div id="nr_status" class="status-line"></div>
+    </div>
+
+    <div class="card">
+      <h2 style="margin-top:0;">Open a recipe</h2>
+      <label style="margin-top:0;">Recipe</label>
+      <select id="recipeSelect"><option value="">Loading recipes...</option></select>
+      <button type="button" id="reloadAllBtn" class="secondary">Reload everything</button>
+    </div>
+
+    <div id="recipeDetail" style="display:none;">
+      <div class="card">
+        <h2 style="margin-top:0;" id="rd_title">Recipe</h2>
+        <div class="pill-row">
+          <span class="badge muted" id="rd_type"></span>
+          <span class="badge muted" id="rd_yield"></span>
+        </div>
+        <div class="totals">
+          <div class="line grand"><span>Total cost</span><span id="rd_totalcost">£0.00</span></div>
+          <div class="line"><span>Cost per base unit</span><span id="rd_costperbase">£0.00</span></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2 style="margin-top:0;">Add line</h2>
+        <form id="lineForm">
+          <div class="field-row">
+            <div>
+              <label style="margin-top:0;">Component type *</label>
+              <select id="ln_componenttype" required>
+                <option value="Ingredient">Ingredient</option>
+                <option value="Recipe">Recipe (sub-recipe)</option>
+              </select>
+            </div>
+            <div>
+              <label style="margin-top:0;">Component *</label>
+              <select id="ln_component" required><option value="">Choose component type first</option></select>
+            </div>
+          </div>
+          <div class="field-row three">
+            <div><label>Quantity *</label><input id="ln_quantity" type="number" step="0.01" min="0" required></div>
+            <div>
+              <label>Unit *</label>
+              <select id="ln_unit" required><option value="">Choose component first</option></select>
+            </div>
+            <div id="ln_supplierWrap">
+              <label>Supplier</label>
+              <select id="ln_supplier"><option value="">Choose component first</option></select>
+            </div>
+          </div>
+          <div class="totals">
+            <div class="line"><span>Line cost</span><span id="ln_linecost">—</span></div>
+          </div>
+          <button type="submit" id="ln_addBtn">Add line to recipe</button>
+        </form>
+        <div id="ln_status" class="status-line"></div>
+      </div>
+
+      <h2>Recipe lines</h2>
+      <table id="linesTable" style="display:none;">
+        <thead><tr><th>Component</th><th>Type</th><th>Quantity</th><th>Supplier</th><th>Line cost</th></tr></thead>
+        <tbody id="linesBody"></tbody>
+      </table>
+    </div>
+
+  </div>
+</main>
+
+<script src="js/config.js"></script>
+<script src="js/sheets.js"></script>
+<script src="js/units.js"></script>
+<script>
+  const ING_RANGE = 'Ingredients!A:H';
+  const SUP_RANGE = 'Suppliers!A:D';
+  const SI_RANGE = 'SupplierIngredients!A:G';
+  const REC_RANGE = 'Recipes!A:H';
+  const REC_HEADERS = ['ID','NAME','TYPE','YIELD MEASURE TYPE','YIELD AMOUNT','YIELD UNIT','TOTAL COST','COST PER BASE UNIT'];
+  const RL_RANGE = 'RecipeLines!A:H';
+  const RL_HEADERS = ['ID','RECIPE ID','COMPONENT TYPE','COMPONENT ID','QUANTITY','UNIT','SELECTED SUPPLIER ID','LINE COST'];
+
+  let token = null;
+  let ingredients = [];         // {id, name, measureType, baseUnit}
+  let suppliers = [];           // {id, name}
+  let supplierIngredients = []; // {id, ingredientId, supplierId, packSize, packUnit, price, costPerBase}
+  let recipesAll = [];          // {id, name, type, yieldMeasureType, yieldAmount, yieldUnit, totalCost, costPerBase}
+  let currentRecipe = null;
+  let currentLines = [];
+
+  const nrStatus = document.getElementById('nr_status');
+  const lnStatus = document.getElementById('ln_status');
+
+  function setNrStatus(msg, kind) { nrStatus.textContent = msg; nrStatus.className = 'status-line' + (kind ? ' ' + kind : ''); }
+  function setLnStatus(msg, kind) { lnStatus.textContent = msg; lnStatus.className = 'status-line' + (kind ? ' ' + kind : ''); }
+
+  function requireAuth() {
+    const cfg = getStoredConfig();
+    token = tryResumeSession();
+    if (!token || !cfg.spreadsheetId) {
+      document.getElementById('signedOutNotice').style.display = 'block';
+      document.getElementById('appBody').style.display = 'none';
+      return false;
+    }
+    document.getElementById('signedOutNotice').style.display = 'none';
+    document.getElementById('appBody').style.display = 'block';
+    return true;
+  }
+
+  // ---------- New recipe form ----------
+  document.getElementById('nr_measuretype').addEventListener('change', (e) => {
+    const sel = document.getElementById('nr_yieldunit');
+    const opts = unitsForType(e.target.value);
+    sel.innerHTML = opts.length ? opts.map(u => `<option value="${u}">${u}</option>`).join('') : '<option value="">Choose measure type first</option>';
+  });
+
+  document.getElementById('newRecipeForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (!requireAuth()) return;
+    const name = document.getElementById('nr_name').value.trim();
+    const type = document.getElementById('nr_type').value;
+    const measureType = document.getElementById('nr_measuretype').value;
+    const yieldAmount = parseFloat(document.getElementById('nr_yieldamount').value);
+    const yieldUnit = document.getElementById('nr_yieldunit').value;
+    if (!name || !measureType || !yieldAmount || !yieldUnit) { setNrStatus('All fields are required.', 'error'); return; }
+
+    const cfg = getStoredConfig();
+    setNrStatus('Creating recipe...');
+    try {
+      const existing = await sheetsGet(cfg.spreadsheetId, REC_RANGE, token);
+      const rows = existing.length ? existing : [REC_HEADERS];
+      const id = nextId(rows, 'REC');
+      const row = [id, name, type, measureType, yieldAmount, yieldUnit, '0.00', '0.0000'];
+      await sheetsAppend(cfg.spreadsheetId, REC_RANGE, row, token);
+      setNrStatus(`Recipe ${id} created. Select it below to add lines.`, 'ok');
+      e.target.reset();
+      document.getElementById('nr_yieldunit').innerHTML = '<option value="">Choose measure type first</option>';
+      await loadRecipesOnly();
+    } catch (err) {
+      setNrStatus('Error: ' + err.message, 'error');
+    }
+  });
+
+  // ---------- Lookups ----------
+  async function loadIngredients() {
+    const cfg = getStoredConfig();
+    const rows = await sheetsGet(cfg.spreadsheetId, ING_RANGE, token);
+    ingredients = (rows.slice(1) || []).map(r => ({ id: r[0], name: r[1], measureType: r[3], baseUnit: r[4] })).filter(i => i.id);
+  }
+  async function loadSuppliers() {
+    const cfg = getStoredConfig();
+    const rows = await sheetsGet(cfg.spreadsheetId, SUP_RANGE, token);
+    suppliers = (rows.slice(1) || []).map(r => ({ id: r[0], name: r[1] })).filter(s => s.id);
+  }
+  async function loadSupplierIngredients() {
+    const cfg = getStoredConfig();
+    const rows = await sheetsGet(cfg.spreadsheetId, SI_RANGE, token);
+    supplierIngredients = (rows.slice(1) || []).map(r => ({
+      id: r[0], ingredientId: r[1], supplierId: r[2],
+      packSize: parseFloat(r[3]) || 0, packUnit: r[4],
+      price: parseFloat(r[5]) || 0, costPerBase: parseFloat(r[6]) || 0
+    })).filter(s => s.id);
+  }
+  async function loadRecipesOnly() {
+    const cfg = getStoredConfig();
+    const rows = await sheetsGet(cfg.spreadsheetId, REC_RANGE, token);
+    recipesAll = (rows.slice(1) || []).map(r => ({
+      id: r[0], name: r[1], type: r[2], yieldMeasureType: r[3],
+      yieldAmount: parseFloat(r[4]) || 0, yieldUnit: r[5],
+      totalCost: parseFloat(r[6]) || 0, costPerBase: parseFloat(r[7]) || 0
+    })).filter(r => r.id);
+    renderRecipeSelect();
+  }
+
+  function renderRecipeSelect() {
+    const sel = document.getElementById('recipeSelect');
+    const keep = sel.value;
+    sel.innerHTML = recipesAll.length
+      ? '<option value="">Choose a recipe...</option>' + recipesAll.map(r => `<option value="${r.id}">${r.name} — ${r.type} (${fmtMoney2(r.totalCost)})</option>`).join('')
+      : '<option value="">No recipes yet — create one above</option>';
+    if (keep && recipesAll.some(r => r.id === keep)) sel.value = keep;
+  }
+
+  async function loadAllLookups() {
+    await Promise.all([loadIngredients(), loadSuppliers(), loadSupplierIngredients(), loadRecipesOnly()]);
+  }
+
+  // ---------- Recipe detail / line builder ----------
+  document.getElementById('recipeSelect').addEventListener('change', (e) => {
+    const id = e.target.value;
+    currentRecipe = recipesAll.find(r => r.id === id) || null;
+    if (!currentRecipe) { document.getElementById('recipeDetail').style.display = 'none'; return; }
+    renderRecipeDetail();
+    refreshComponentOptions();
+    loadLines();
+  });
+
+  function renderRecipeDetail() {
+    document.getElementById('recipeDetail').style.display = 'block';
+    document.getElementById('rd_title').textContent = currentRecipe.name;
+    document.getElementById('rd_type').textContent = currentRecipe.type;
+    document.getElementById('rd_yield').textContent = `Yields ${currentRecipe.yieldAmount} ${currentRecipe.yieldUnit}`;
+    document.getElementById('rd_totalcost').textContent = fmtMoney2(currentRecipe.totalCost);
+    document.getElementById('rd_costperbase').textContent = `${fmtMoney2(currentRecipe.costPerBase)} per ${baseUnitFor(currentRecipe.yieldMeasureType)}`;
+  }
+
+  document.getElementById('ln_componenttype').addEventListener('change', refreshComponentOptions);
+
+  function refreshComponentOptions() {
+    const type = document.getElementById('ln_componenttype').value;
+    const sel = document.getElementById('ln_component');
+    if (type === 'Ingredient') {
+      sel.innerHTML = ingredients.length
+        ? ingredients.map(i => `<option value="${i.id}">${i.name} (${i.measureType})</option>`).join('')
+        : '<option value="">No ingredients yet</option>';
+    } else {
+      const options = recipesAll.filter(r => r.id !== currentRecipe.id);
+      sel.innerHTML = options.length
+        ? options.map(r => `<option value="${r.id}">${r.name} (${r.type}, ${r.yieldMeasureType})</option>`).join('')
+        : '<option value="">No other recipes yet</option>';
+    }
+    refreshUnitAndSupplierOptions();
+  }
+
+  function currentComponent() {
+    const type = document.getElementById('ln_componenttype').value;
+    const id = document.getElementById('ln_component').value;
+    if (type === 'Ingredient') return { type, measureType: (ingredients.find(i => i.id === id) || {}).measureType, ref: ingredients.find(i => i.id === id) };
+    return { type, measureType: (recipesAll.find(r => r.id === id) || {}).yieldMeasureType, ref: recipesAll.find(r => r.id === id) };
+  }
+
+  function cheapestSupplierFor(ingredientId) {
+    const options = supplierIngredients.filter(s => s.ingredientId === ingredientId);
+    if (!options.length) return null;
+    return options.reduce((a, b) => (b.costPerBase < a.costPerBase ? b : a));
+  }
+
+  document.getElementById('ln_component').addEventListener('change', refreshUnitAndSupplierOptions);
+
+  function refreshUnitAndSupplierOptions() {
+    const comp = currentComponent();
+    const unitSel = document.getElementById('ln_unit');
+    const supWrap = document.getElementById('ln_supplierWrap');
+    const supSel = document.getElementById('ln_supplier');
+
+    if (!comp.ref || !comp.measureType) {
+      unitSel.innerHTML = '<option value="">Choose component first</option>';
+      supSel.innerHTML = '<option value="">—</option>';
+      recalcLineCost();
+      return;
+    }
+    unitSel.innerHTML = unitsForType(comp.measureType).map(u => `<option value="${u}">${u}</option>`).join('');
+
+    if (comp.type === 'Ingredient') {
+      supWrap.style.display = 'block';
+      const options = supplierIngredients.filter(s => s.ingredientId === comp.ref.id);
+      if (!options.length) {
+        supSel.innerHTML = '<option value="">No supplier price set for this ingredient yet</option>';
+      } else {
+        const cheapest = cheapestSupplierFor(comp.ref.id);
+        supSel.innerHTML = options.map(o => {
+          const supName = (suppliers.find(x => x.id === o.supplierId) || {}).name || o.supplierId;
+          const isCheapest = cheapest && o.id === cheapest.id;
+          return `<option value="${o.id}" ${isCheapest ? 'selected' : ''}>${supName} — ${fmtMoney2(o.costPerBase)}/${baseUnitFor(comp.measureType)}${isCheapest ? ' (cheapest)' : ''}</option>`;
+        }).join('');
+      }
+    } else {
+      supWrap.style.display = 'none';
+      supSel.innerHTML = '<option value="">—</option>';
+    }
+    recalcLineCost();
+  }
+
+  document.getElementById('ln_quantity').addEventListener('input', recalcLineCost);
+  document.getElementById('ln_unit').addEventListener('change', recalcLineCost);
+  document.getElementById('ln_supplier').addEventListener('change', recalcLineCost);
+
+  function costPerBaseForSelection() {
+    const comp = currentComponent();
+    if (!comp.ref) return null;
+    if (comp.type === 'Ingredient') {
+      const supId = document.getElementById('ln_supplier').value;
+      const chosen = supplierIngredients.find(s => s.id === supId);
+      return chosen ? chosen.costPerBase : null;
+    }
+    return comp.ref.costPerBase || 0;
+  }
+
+  function recalcLineCost() {
+    const comp = currentComponent();
+    const qty = parseFloat(document.getElementById('ln_quantity').value);
+    const unit = document.getElementById('ln_unit').value;
+    const box = document.getElementById('ln_linecost');
+    const costPerBase = costPerBaseForSelection();
+    if (!comp.ref || !qty || !unit || costPerBase === null) { box.textContent = '—'; return null; }
+    const baseAmount = toBaseAmount(comp.measureType, qty, unit);
+    const lineCost = baseAmount * costPerBase;
+    box.textContent = fmtMoney2(lineCost);
+    return lineCost;
+  }
+
+  async function loadLines() {
+    const cfg = getStoredConfig();
+    const rows = await sheetsGet(cfg.spreadsheetId, RL_RANGE, token);
+    currentLines = (rows.slice(1) || []).map(r => ({
+      id: r[0], recipeId: r[1], componentType: r[2], componentId: r[3],
+      quantity: parseFloat(r[4]) || 0, unit: r[5], supplierId: r[6] || '', lineCost: parseFloat(r[7]) || 0
+    })).filter(l => l.id && l.recipeId === currentRecipe.id);
+    renderLinesTable();
+  }
+
+  function componentDisplayName(componentType, componentId) {
+    if (componentType === 'Ingredient') return (ingredients.find(i => i.id === componentId) || {}).name || componentId;
+    return (recipesAll.find(r => r.id === componentId) || {}).name || componentId;
+  }
+
+  function renderLinesTable() {
+    const table = document.getElementById('linesTable');
+    const body = document.getElementById('linesBody');
+    if (!currentLines.length) { table.style.display = 'none'; return; }
+    body.innerHTML = currentLines.map(l => `
+      <tr>
+        <td>${componentDisplayName(l.componentType, l.componentId)}</td>
+        <td>${l.componentType}</td>
+        <td>${l.quantity} ${l.unit}</td>
+        <td>${l.supplierId ? ((suppliers.find(s => s.id === l.supplierId) || {}).name || l.supplierId) : '—'}</td>
+        <td>${fmtMoney2(l.lineCost)}</td>
+      </tr>
+    `).join('');
+    table.style.display = 'table';
+  }
+
+  document.getElementById('lineForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (!requireAuth() || !currentRecipe) return;
+
+    const comp = currentComponent();
+    const qty = parseFloat(document.getElementById('ln_quantity').value);
+    const unit = document.getElementById('ln_unit').value;
+    const supplierId = document.getElementById('ln_supplier').value || '';
+
+    if (!comp.ref || !qty || !unit) { setLnStatus('Component, quantity, and unit are required.', 'error'); return; }
+    if (comp.type === 'Ingredient' && !supplierId) { setLnStatus('This ingredient has no supplier price yet — add one on the Supplier Prices page first.', 'error'); return; }
+
+    const lineCost = recalcLineCost();
+    if (lineCost === null) { setLnStatus('Could not calculate line cost — check the values.', 'error'); return; }
+
+    const cfg = getStoredConfig();
+    setLnStatus('Adding line...');
+    try {
+      const existingRL = await sheetsGet(cfg.spreadsheetId, RL_RANGE, token);
+      const rlRows = existingRL.length ? existingRL : [RL_HEADERS];
+      const lineId = nextId(rlRows, 'RL');
+      const row = [lineId, currentRecipe.id, comp.type, comp.ref.id, qty, unit, supplierId, lineCost.toFixed(4)];
+      await sheetsAppend(cfg.spreadsheetId, RL_RANGE, row, token);
+
+      setLnStatus('Recalculating recipe cost...');
+      await recalcAndSaveRecipeCost(cfg);
+
+      setLnStatus('Line added.', 'ok');
+      document.getElementById('ln_quantity').value = '';
+      document.getElementById('ln_linecost').textContent = '—';
+      await loadRecipesOnly();
+      currentRecipe = recipesAll.find(r => r.id === currentRecipe.id);
+      renderRecipeDetail();
+      await loadLines();
+    } catch (err) {
+      setLnStatus('Error: ' + err.message, 'error');
+    }
+  });
+
+  // Sums all RecipeLines for currentRecipe, writes Total Cost + Cost per Base Unit back to its Recipes row.
+  async function recalcAndSaveRecipeCost(cfg) {
+    const rlRows = await sheetsGet(cfg.spreadsheetId, RL_RANGE, token);
+    const lines = (rlRows.slice(1) || []).filter(r => r[1] === currentRecipe.id);
+    const totalCost = lines.reduce((sum, r) => sum + (parseFloat(r[7]) || 0), 0);
+
+    const recRows = await sheetsGet(cfg.spreadsheetId, REC_RANGE, token);
+    const rowIndex = recRows.findIndex((r, i) => i > 0 && r[0] === currentRecipe.id);
+    if (rowIndex === -1) throw new Error('Could not find this recipe\'s row to update.');
+
+    const yieldBaseAmount = toBaseAmount(currentRecipe.yieldMeasureType, currentRecipe.yieldAmount, currentRecipe.yieldUnit);
+    const costPerBase = yieldBaseAmount ? totalCost / yieldBaseAmount : 0;
+
+    const sheetRow = rowIndex + 1; // 1-based row number in the sheet
+    await sheetsUpdateRange(cfg.spreadsheetId, `Recipes!G${sheetRow}:H${sheetRow}`, [[totalCost.toFixed(2), costPerBase.toFixed(4)]], token, 'USER_ENTERED');
+  }
+
+  document.getElementById('reloadAllBtn').addEventListener('click', async () => {
+    await loadAllLookups();
+    if (currentRecipe) {
+      currentRecipe = recipesAll.find(r => r.id === currentRecipe.id) || null;
+      if (currentRecipe) { renderRecipeDetail(); refreshComponentOptions(); await loadLines(); }
+      else { document.getElementById('recipeDetail').style.display = 'none'; }
+    }
+  });
+
+  window.addEventListener('load', async () => {
+    if (requireAuth()) {
+      setNrStatus('Loading...');
+      try {
+        await loadAllLookups();
+        setNrStatus('', '');
+      } catch (err) {
+        setNrStatus('Error loading data: ' + err.message, 'error');
+      }
+    }
+  });
+</script>
+</body>
+</html>

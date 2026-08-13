@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Carisma Ops — Ingredients</title>
+<title>Carisma Ops — Suppliers</title>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <link rel="stylesheet" href="css/style.css">
 </head>
@@ -13,8 +13,8 @@
   <div class="brand">Carisma <span>Ops</span></div>
   <nav class="app-nav">
     <a href="index.html">Dashboard</a>
-    <a href="ingredients.html" class="active">Ingredients</a>
-    <a href="suppliers.html">Suppliers</a>
+    <a href="ingredients.html">Ingredients</a>
+    <a href="suppliers.html" class="active">Suppliers</a>
     <a href="supplier-ingredients.html">Supplier Prices</a>
     <a href="recipes.html">Recipes</a>
     <a href="setup.html">Setup</a>
@@ -22,8 +22,8 @@
 </header>
 
 <main>
-  <h1>Ingredients</h1>
-  <p class="sub">The generic master list — no cost lives here. Just the ingredient and how it's used in a recipe: by weight, volume, or unit. Pricing is set per supplier on the <a href="supplier-ingredients.html">Supplier Prices</a> page.</p>
+  <h1>Suppliers</h1>
+  <p class="sub">Your list of suppliers. Prices per ingredient are set on the <a href="supplier-ingredients.html">Supplier Prices</a> page, not here.</p>
 
   <div id="signedOutNotice" class="card" style="display:none;">
     <span class="badge off">Not signed in</span>
@@ -31,41 +31,21 @@
   </div>
 
   <div class="card" id="formCard" style="display:none;">
-    <h2 style="margin-top:0;">Add ingredient</h2>
+    <h2 style="margin-top:0;">Add supplier</h2>
     <form id="addForm">
       <div class="field-row">
         <div><label style="margin-top:0;">Name *</label><input id="f_name" required></div>
-        <div><label style="margin-top:0;">Category</label><input id="f_category" placeholder="e.g. Dry Goods, Dairy, Produce"></div>
+        <div><label style="margin-top:0;">Contact</label><input id="f_contact" placeholder="Phone, email, or account manager"></div>
       </div>
-      <div class="field-row">
-        <div>
-          <label>Measure type *</label>
-          <select id="f_measuretype" required>
-            <option value="">Choose one...</option>
-            <option value="Weight">Weight</option>
-            <option value="Volume">Volume</option>
-            <option value="Unit">Unit</option>
-          </select>
-          <p class="hint" id="measureHint">This locks how the ingredient is always used in recipes, regardless of how a supplier packages it.</p>
-        </div>
-        <div>
-          <label>Base unit</label>
-          <input id="f_baseunit" disabled placeholder="Set automatically">
-        </div>
-      </div>
-      <label>Description</label>
-      <textarea id="f_description"></textarea>
-      <div class="field-row">
-        <div><label>Storage</label><input id="f_storage" placeholder="e.g. Chilled, Ambient, Frozen"></div>
-        <div><label>Shelf life</label><input id="f_shelflife"></div>
-      </div>
-      <button type="submit" id="addBtn">Add ingredient</button>
+      <label>Notes</label>
+      <textarea id="f_notes"></textarea>
+      <button type="submit" id="addBtn">Add supplier</button>
       <button type="button" id="reloadBtn" class="secondary">Reload list</button>
     </form>
     <div id="status" class="status-line"></div>
   </div>
 
-  <h2>All ingredients</h2>
+  <h2>All suppliers</h2>
   <table id="rowsTable" style="display:none;">
     <thead><tr id="tableHead"></tr></thead>
     <tbody id="tableBody"></tbody>
@@ -76,12 +56,11 @@
 <script src="js/sheets.js"></script>
 <script src="js/units.js"></script>
 <script>
-  const RANGE = 'Ingredients!A:H';
-  const HEADERS = ['ID','NAME','CATEGORY','MEASURE TYPE','BASE UNIT','DESCRIPTION','STORAGE','SHELF LIFE'];
+  const RANGE = 'Suppliers!A:D';
+  const HEADERS = ['ID','NAME','CONTACT','NOTES'];
 
   const status = document.getElementById('status');
   let token = null;
-  let cachedRows = [HEADERS];
 
   function setStatus(msg, kind) {
     status.textContent = msg;
@@ -101,18 +80,13 @@
     return true;
   }
 
-  document.getElementById('f_measuretype').addEventListener('change', (e) => {
-    document.getElementById('f_baseunit').value = baseUnitFor(e.target.value);
-  });
-
   async function loadRows() {
     const cfg = getStoredConfig();
     setStatus('Loading...');
     try {
       const rows = await sheetsGet(cfg.spreadsheetId, RANGE, token);
-      cachedRows = rows.length ? rows : [HEADERS];
-      renderTable(cachedRows);
-      setStatus(`Loaded ${Math.max(cachedRows.length - 1, 0)} ingredient(s).`, 'ok');
+      renderTable(rows.length ? rows : [HEADERS]);
+      setStatus(`Loaded ${Math.max(rows.length - 1, 0)} supplier(s).`, 'ok');
     } catch (err) {
       setStatus('Error loading: ' + err.message, 'error');
     }
@@ -134,35 +108,25 @@
   document.getElementById('addForm').addEventListener('submit', async (e) => {
     e.preventDefault();
     if (!requireAuth()) return;
-
     const name = document.getElementById('f_name').value.trim();
-    const measureType = document.getElementById('f_measuretype').value;
     if (!name) { setStatus('Name is required.', 'error'); return; }
-    if (!measureType) { setStatus('Measure type is required.', 'error'); return; }
 
     const cfg = getStoredConfig();
     setStatus('Loading current list to assign an ID...');
     try {
       const existing = await sheetsGet(cfg.spreadsheetId, RANGE, token);
       const rows = existing.length ? existing : [HEADERS];
-      const id = nextId(rows, 'ING');
-
+      const id = nextId(rows, 'SUP');
       const row = [
         id,
         name,
-        document.getElementById('f_category').value.trim(),
-        measureType,
-        baseUnitFor(measureType),
-        document.getElementById('f_description').value.trim(),
-        document.getElementById('f_storage').value.trim(),
-        document.getElementById('f_shelflife').value.trim()
+        document.getElementById('f_contact').value.trim(),
+        document.getElementById('f_notes').value.trim()
       ];
-
-      setStatus('Adding ingredient...');
+      setStatus('Adding supplier...');
       await sheetsAppend(cfg.spreadsheetId, RANGE, row, token);
-      setStatus(`Ingredient ${id} added.`, 'ok');
+      setStatus(`Supplier ${id} added.`, 'ok');
       e.target.reset();
-      document.getElementById('f_baseunit').value = '';
       loadRows();
     } catch (err) {
       setStatus('Error: ' + err.message, 'error');

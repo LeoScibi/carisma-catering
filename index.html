@@ -14,7 +14,9 @@
   <nav class="app-nav">
     <a href="index.html" class="active">Dashboard</a>
     <a href="ingredients.html">Ingredients</a>
-    <a href="quotes.html">Quotes</a>
+    <a href="suppliers.html">Suppliers</a>
+    <a href="supplier-ingredients.html">Supplier Prices</a>
+    <a href="recipes.html">Recipes</a>
     <a href="setup.html">Setup</a>
   </nav>
 </header>
@@ -42,22 +44,34 @@
       <div class="desc">Creates the required tabs and header rows in your spreadsheet automatically. Run this first.</div>
     </a>
     <a class="nav-card" href="ingredients.html">
-      <div class="title">Ingredient Database</div>
-      <div class="desc">Add and browse ingredients — supplier, category, case weight, shelf life and more.</div>
+      <div class="title">Ingredients</div>
+      <div class="desc">Generic ingredient master list — no pricing here, just name, category, and how it's used: weight, volume, or unit.</div>
     </a>
-    <a class="nav-card" href="quotes.html">
-      <div class="title">Quote Builder</div>
-      <div class="desc">Build a client quote from menu tiers, guest count, staffing and equipment.</div>
+    <a class="nav-card" href="suppliers.html">
+      <div class="title">Suppliers</div>
+      <div class="desc">Your supplier list — name and contact details.</div>
+    </a>
+    <a class="nav-card" href="supplier-ingredients.html">
+      <div class="title">Supplier Prices</div>
+      <div class="desc">Links an ingredient to a supplier with pack size, pack unit, and price. This is where cost lives.</div>
+    </a>
+    <a class="nav-card" href="recipes.html">
+      <div class="title">Recipes</div>
+      <div class="desc">Build recipes from ingredients and other recipes (sub-recipes). Costs to the cheapest supplier by default, with manual override per line.</div>
     </a>
   </div>
 
-  <h2>Setup notes</h2>
+  <h2>How the data fits together</h2>
   <div class="card">
     <p style="margin:0; font-size:13px; color:var(--muted); line-height:1.6;">
-      After saving your config and signing in, go to <strong>Setup</strong> to auto-create the
-      <strong>Ingredients</strong>, <strong>MenuItems</strong>, and <strong>Quotes</strong> tabs with
-      the right headers — no manual tab creation needed. Sign-in lasts about an hour — if a page
-      shows an auth error, come back here and sign in again.
+      After saving your config and signing in, go to <strong>Setup</strong> to auto-create the five
+      tabs this app needs: <strong>Ingredients</strong>, <strong>Suppliers</strong>,
+      <strong>SupplierIngredients</strong>, <strong>Recipes</strong>, and <strong>RecipeLines</strong>.
+      Ingredients are generic and carry no cost; pricing lives on SupplierIngredients, since the same
+      ingredient can cost differently depending on the supplier. A recipe can include ingredients
+      <em>or</em> other recipes as sub-recipe components — both convert through the same weight,
+      volume, or unit family, metric only. Sign-in lasts about an hour — if a page shows an auth
+      error, come back here and sign in again.
     </p>
   </div>
 </main>

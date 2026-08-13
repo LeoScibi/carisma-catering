@@ -14,14 +14,16 @@
   <nav class="app-nav">
     <a href="index.html">Dashboard</a>
     <a href="ingredients.html">Ingredients</a>
-    <a href="quotes.html">Quotes</a>
+    <a href="suppliers.html">Suppliers</a>
+    <a href="supplier-ingredients.html">Supplier Prices</a>
+    <a href="recipes.html">Recipes</a>
     <a href="setup.html" class="active">Setup</a>
   </nav>
 </header>
 
 <main>
   <h1>Sheet Setup</h1>
-  <p class="sub">Creates any missing tabs and header rows in your spreadsheet — run this once, or any time you add a new tool.</p>
+  <p class="sub">Creates any missing tabs and header rows in your spreadsheet — run this once, or any time you add a new tool. Safe to re-run: it never overwrites a tab that already has a header row.</p>
 
   <div id="signedOutNotice" class="card" style="display:none;">
     <span class="badge off">Not signed in</span>
@@ -40,18 +42,29 @@
 <script src="js/sheets.js"></script>
 <script>
   // Every tab this app depends on, and the exact header row each one needs.
+  // Ingredients stay generic (no cost). Suppliers and SupplierIngredients
+  // carry the pricing. Recipes/RecipeLines let a finished recipe be used as
+  // a component ("sub-recipe") inside another recipe.
   const REQUIRED_TABS = [
     {
       title: 'Ingredients',
-      headers: ['INGREDIENT','CODE','SUPPLIER','MAIN CATEGORY','IMAGE 1','IMAGE 2','IMAGE 3','BANNER','DESCRIPTION','CASE WEIGHT','UNIT','SHELF LIFE','STORAGE','RECIPES1','RECIPES2']
+      headers: ['ID','NAME','CATEGORY','MEASURE TYPE','BASE UNIT','DESCRIPTION','STORAGE','SHELF LIFE']
     },
     {
-      title: 'MenuItems',
-      headers: ['MENU','TIER','PRICE PER PERSON','NOTES']
+      title: 'Suppliers',
+      headers: ['ID','NAME','CONTACT','NOTES']
     },
     {
-      title: 'Quotes',
-      headers: ['DATE','CLIENT','COMPANY','EVENT DATE','GUEST COUNT','MENU','TIER','PRICE PER PERSON','SUBTOTAL','STAFFING FEE','EQUIPMENT FEE','TOTAL','NOTES']
+      title: 'SupplierIngredients',
+      headers: ['ID','INGREDIENT ID','SUPPLIER ID','PACK SIZE','PACK UNIT','PRICE','COST PER BASE UNIT']
+    },
+    {
+      title: 'Recipes',
+      headers: ['ID','NAME','TYPE','YIELD MEASURE TYPE','YIELD AMOUNT','YIELD UNIT','TOTAL COST','COST PER BASE UNIT']
+    },
+    {
+      title: 'RecipeLines',
+      headers: ['ID','RECIPE ID','COMPONENT TYPE','COMPONENT ID','QUANTITY','UNIT','SELECTED SUPPLIER ID','LINE COST']
     }
   ];
 
@@ -76,6 +89,10 @@
     return true;
   }
 
+  function badge(text, ok) {
+    return `<span class="badge${ok ? '' : ' off'}">${text}</span>`;
+  }
+
   function renderTabsList(rows) {
     const container = document.getElementById('tabsList');
     container.innerHTML = `
@@ -97,13 +114,18 @@
     `;
   }
 
-  function badge(text, ok) {
-    return `<span class="badge${ok ? '' : ' off'}">${text}</span>`;
-  }
-
-  // Initial render before running setup, so the person can see what's about to happen.
   function renderPending() {
     renderTabsList(REQUIRED_TABS.map(t => ({ ...t, statusBadge: badge('Not checked yet', false) })));
+  }
+
+  function colLetterLocal(n) {
+    let s = '';
+    while (n > 0) {
+      const rem = (n - 1) % 26;
+      s = String.fromCharCode(65 + rem) + s;
+      n = Math.floor((n - 1) / 26);
+    }
+    return s;
   }
 
   async function runSetup() {
@@ -122,7 +144,6 @@
     const existingTitles = new Set(existingTabs.map(t => t.title));
     const missing = REQUIRED_TABS.filter(t => !existingTitles.has(t.title));
 
-    // Step 1: create any missing tabs in one batch call.
     if (missing.length) {
       setStatus(`Creating ${missing.length} missing tab(s): ${missing.map(t => t.title).join(', ')}...`);
       try {
@@ -137,14 +158,13 @@
       }
     }
 
-    // Step 2: for every required tab, write the header row if it's currently empty, then bold it.
     const results = [];
     for (const tab of REQUIRED_TABS) {
       const wasMissing = missing.some(m => m.title === tab.title);
       const meta = existingTabs.find(t => t.title === tab.title);
       let statusBadge;
       try {
-        const endCol = colLetter(tab.headers.length);
+        const endCol = colLetterLocal(tab.headers.length);
         const firstRow = await sheetsGet(cfg.spreadsheetId, `${tab.title}!A1:${endCol}1`, token);
         const hasHeader = firstRow.length > 0 && firstRow[0].some(c => (c || '').trim() !== '');
 
@@ -169,17 +189,6 @@
     }
 
     setStatus('Setup complete.', 'ok');
-  }
-
-  function colLetter(n) {
-    // 1 -> A, 2 -> B, ... 27 -> AA
-    let s = '';
-    while (n > 0) {
-      const rem = (n - 1) % 26;
-      s = String.fromCharCode(65 + rem) + s;
-      n = Math.floor((n - 1) / 26);
-    }
-    return s;
   }
 
   document.getElementById('runBtn').addEventListener('click', runSetup);
