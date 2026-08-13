@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Carisma Ops — Quotes</title>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<header class="app-header">
+  <div class="brand">Carisma <span>Ops</span></div>
+  <nav class="app-nav">
+    <a href="index.html">Dashboard</a>
+    <a href="ingredients.html">Ingredients</a>
+    <a href="quotes.html" class="active">Quotes</a>
+  </nav>
+</header>
+
+<main>
+  <h1>Quote Builder</h1>
+  <p class="sub">Pulls menu/tier pricing from the <strong>MenuItems</strong> tab and saves finished quotes to <strong>Quotes</strong>.</p>
+
+  <div id="signedOutNotice" class="card" style="display:none;">
+    <span class="badge off">Not signed in</span>
+    <p style="font-size:13px; color:var(--muted); margin-bottom:0;">Go to the <a href="index.html">Dashboard</a> to sign in — your session will carry over here.</p>
+  </div>
+
+  <div class="card" id="formCard" style="display:none;">
+    <h2 style="margin-top:0;">New quote</h2>
+    <div class="field-row">
+      <div><label style="margin-top:0;">Client name *</label><input id="f_client" required></div>
+      <div><label style="margin-top:0;">Company</label><input id="f_company"></div>
+    </div>
+    <div class="field-row">
+      <div><label>Event date</label><input id="f_eventdate" type="date"></div>
+      <div><label>Guest count *</label><input id="f_guests" type="number" min="1" required></div>
+    </div>
+    <div class="field-row">
+      <div>
+        <label>Menu / Tier *</label>
+        <select id="f_menuitem" required><option value="">Loading menu items...</option></select>
+      </div>
+      <div><label>Price / person (£)</label><input id="f_priceperperson" type="number" step="0.01" readonly></div>
+    </div>
+    <div class="field-row">
+      <div><label>Staffing fee (£)</label><input id="f_staffing" type="number" step="0.01" value="0"></div>
+      <div><label>Equipment fee (£)</label><input id="f_equipment" type="number" step="0.01" value="0"></div>
+    </div>
+    <label>Notes</label>
+    <textarea id="f_notes"></textarea>
+
+    <div class="totals" id="totalsBox">
+      <div class="line"><span>Subtotal (price/person × guests)</span><span id="t_subtotal">£0.00</span></div>
+      <div class="line"><span>Staffing + equipment</span><span id="t_fees">£0.00</span></div>
+      <div class="line grand"><span>Total</span><span id="t_total">£0.00</span></div>
+    </div>
+
+    <button type="button" id="saveBtn">Save quote</button>
+    <button type="button" id="reloadBtn" class="secondary">Reload menu items &amp; quotes</button>
+    <div id="status" class="status-line"></div>
+  </div>
+
+  <h2>Saved quotes</h2>
+  <table id="quotesTable" style="display:none;">
+    <thead><tr id="quotesHead"></tr></thead>
+    <tbody id="quotesBody"></tbody>
+  </table>
+</main>
+
+<script src="js/config.js"></script>
+<script src="js/sheets.js"></script>
+<script>
+  const MENUITEMS_RANGE = 'MenuItems!A:D';   // MENU | TIER | PRICE PER PERSON | NOTES
+  const QUOTES_RANGE = 'Quotes!A:M';
+
+  const status = document.getElementById('status');
+  let token = null;
+  let menuItems = []; // [{menu, tier, price, notes}]
+
+  function setStatus(msg, kind) {
+    status.textContent = msg;
+    status.className = 'status-line' + (kind ? ' ' + kind : '');
+  }
+
+  function requireAuth() {
+    const cfg = getStoredConfig();
+    token = tryResumeSession();
+    if (!token || !cfg.spreadsheetId) {
+      document.getElementById('signedOutNotice').style.display = 'block';
+      document.getElementById('formCard').style.display = 'none';
+      return false;
+    }
+    document.getElementById('signedOutNotice').style.display = 'none';
+    document.getElementById('formCard').style.display = 'block';
+    return true;
+  }
+
+  async function loadMenuItems() {
+    const cfg = getStoredConfig();
+    const select = document.getElementById('f_menuitem');
+    try {
+      const rows = await sheetsGet(cfg.spreadsheetId, MENUITEMS_RANGE, token);
+      const [header, ...rest] = rows.length ? rows : [[]];
+      menuItems = rest.map(r => ({ menu: r[0] || '', tier: r[1] || '', price: parseFloat(r[2]) || 0, notes: r[3] || '' }));
+      if (!menuItems.length) {
+        select.innerHTML = '<option value="">No rows found in MenuItems tab</option>';
+        return;
+      }
+      select.innerHTML = menuItems.map((m, i) =>
+        `<option value="${i}">${m.menu} — ${m.tier} (£${m.price.toFixed(2)})</option>`
+      ).join('');
+      updatePriceField();
+    } catch (err) {
+      select.innerHTML = '<option value="">Error loading menu items</option>';
+      setStatus('Error loading MenuItems: ' + err.message, 'error');
+    }
+  }
+
+  function updatePriceField() {
+    const idx = document.getElementById('f_menuitem').value;
+    const price = menuItems[idx] ? menuItems[idx].price : 0;
+    document.getElementById('f_priceperperson').value = price.toFixed(2);
+    recalcTotals();
+  }
+
+  function recalcTotals() {
+    const guests = parseFloat(document.getElementById('f_guests').value) || 0;
+    const price = parseFloat(document.getElementById('f_priceperperson').value) || 0;
+    const staffing = parseFloat(document.getElementById('f_staffing').value) || 0;
+    const equipment = parseFloat(document.getElementById('f_equipment').value) || 0;
+    const subtotal = guests * price;
+    const fees = staffing + equipment;
+    const total = subtotal + fees;
+    document.getElementById('t_subtotal').textContent = '£' + subtotal.toFixed(2);
+    document.getElementById('t_fees').textContent = '£' + fees.toFixed(2);
+    document.getElementById('t_total').textContent = '£' + total.toFixed(2);
+    return { subtotal, fees, total, guests, price, staffing, equipment };
+  }
+
+  async function loadQuotes() {
+    const cfg = getStoredConfig();
+    try {
+      const rows = await sheetsGet(cfg.spreadsheetId, QUOTES_RANGE, token);
+      renderQuotesTable(rows);
+    } catch (err) {
+      setStatus('Error loading quotes: ' + err.message, 'error');
+    }
+  }
+
+  function renderQuotesTable(rows) {
+    const table = document.getElementById('quotesTable');
+    const head = document.getElementById('quotesHead');
+    const body = document.getElementById('quotesBody');
+    if (!rows.length) { table.style.display = 'none'; return; }
+    const [header, ...rest] = rows;
+    head.innerHTML = header.map(h => `<th>${h}</th>`).join('');
+    body.innerHTML = rest.slice().reverse().map(r =>
+      '<tr>' + header.map((_, i) => `<td>${r[i] ?? ''}</td>`).join('') + '</tr>'
+    ).join('');
+    table.style.display = 'table';
+  }
+
+  document.getElementById('f_menuitem').addEventListener('change', updatePriceField);
+  ['f_guests', 'f_staffing', 'f_equipment'].forEach(id =>
+    document.getElementById(id).addEventListener('input', recalcTotals)
+  );
+
+  document.getElementById('saveBtn').addEventListener('click', async () => {
+    if (!requireAuth()) return;
+    const client = document.getElementById('f_client').value.trim();
+    const guests = document.getElementById('f_guests').value;
+    const idx = document.getElementById('f_menuitem').value;
+    if (!client || !guests || idx === '') { setStatus('Client name, guest count, and a menu/tier are required.', 'error'); return; }
+
+    const totals = recalcTotals();
+    const chosen = menuItems[idx];
+    const row = [
+      new Date().toISOString().slice(0, 10),
+      client,
+      document.getElementById('f_company').value.trim(),
+      document.getElementById('f_eventdate').value,
+      totals.guests,
+      chosen.menu,
+      chosen.tier,
+      totals.price.toFixed(2),
+      totals.subtotal.toFixed(2),
+      totals.staffing.toFixed(2),
+      totals.equipment.toFixed(2),
+      totals.total.toFixed(2),
+      document.getElementById('f_notes').value.trim()
+    ];
+
+    const cfg = getStoredConfig();
+    setStatus('Saving quote...');
+    try {
+      await sheetsAppend(cfg.spreadsheetId, QUOTES_RANGE, row, token);
+      setStatus('Quote saved.', 'ok');
+      loadQuotes();
+    } catch (err) {
+      setStatus('Error: ' + err.message, 'error');
+    }
+  });
+
+  document.getElementById('reloadBtn').addEventListener('click', () => { loadMenuItems(); loadQuotes(); });
+
+  window.addEventListener('load', () => {
+    if (requireAuth()) { loadMenuItems(); loadQuotes(); }
+  });
+</script>
+</body>
+</html>

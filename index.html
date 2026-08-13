@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Carisma Ops — Dashboard</title>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<header class="app-header">
+  <div class="brand">Carisma <span>Ops</span></div>
+  <nav class="app-nav">
+    <a href="index.html" class="active">Dashboard</a>
+    <a href="ingredients.html">Ingredients</a>
+    <a href="quotes.html">Quotes</a>
+    <a href="setup.html">Setup</a>
+  </nav>
+</header>
+
+<main>
+  <h1>Dashboard</h1>
+  <p class="sub">Internal operations tools for Carisma Catering.</p>
+
+  <div class="card">
+    <div id="authArea">
+      <label style="margin-top:0;">Google OAuth Client ID</label>
+      <input id="clientId" placeholder="XXXXXXXXX.apps.googleusercontent.com">
+      <label>Spreadsheet ID</label>
+      <input id="spreadsheetId" placeholder="Found in the sheet's URL between /d/ and /edit">
+      <button id="saveConfigBtn" type="button">Save config</button>
+      <button id="signInBtn" type="button" class="secondary">Sign in with Google</button>
+    </div>
+    <div id="status" class="status-line"></div>
+  </div>
+
+  <h2>Tools</h2>
+  <div class="card-grid">
+    <a class="nav-card" href="setup.html">
+      <div class="title">Sheet Setup</div>
+      <div class="desc">Creates the required tabs and header rows in your spreadsheet automatically. Run this first.</div>
+    </a>
+    <a class="nav-card" href="ingredients.html">
+      <div class="title">Ingredient Database</div>
+      <div class="desc">Add and browse ingredients — supplier, category, case weight, shelf life and more.</div>
+    </a>
+    <a class="nav-card" href="quotes.html">
+      <div class="title">Quote Builder</div>
+      <div class="desc">Build a client quote from menu tiers, guest count, staffing and equipment.</div>
+    </a>
+  </div>
+
+  <h2>Setup notes</h2>
+  <div class="card">
+    <p style="margin:0; font-size:13px; color:var(--muted); line-height:1.6;">
+      After saving your config and signing in, go to <strong>Setup</strong> to auto-create the
+      <strong>Ingredients</strong>, <strong>MenuItems</strong>, and <strong>Quotes</strong> tabs with
+      the right headers — no manual tab creation needed. Sign-in lasts about an hour — if a page
+      shows an auth error, come back here and sign in again.
+    </p>
+  </div>
+</main>
+
+<script src="js/config.js"></script>
+<script>
+  const status = document.getElementById('status');
+  const signInBtn = document.getElementById('signInBtn');
+  let tokenClient = null;
+
+  function setStatus(msg, kind) {
+    status.textContent = msg;
+    status.className = 'status-line' + (kind ? ' ' + kind : '');
+  }
+
+  function refreshSignedInUI() {
+    const token = tryResumeSession();
+    if (token) {
+      setStatus('Signed in — session active.', 'ok');
+    }
+  }
+
+  window.addEventListener('load', () => {
+    const cfg = getStoredConfig();
+    document.getElementById('clientId').value = cfg.clientId;
+    document.getElementById('spreadsheetId').value = cfg.spreadsheetId;
+    refreshSignedInUI();
+  });
+
+  document.getElementById('saveConfigBtn').addEventListener('click', () => {
+    const clientId = document.getElementById('clientId').value.trim();
+    const spreadsheetId = document.getElementById('spreadsheetId').value.trim();
+    if (!clientId || !spreadsheetId) { setStatus('Enter both fields before saving.', 'error'); return; }
+    saveStoredConfig(clientId, spreadsheetId);
+    setStatus('Config saved for this browser.', 'ok');
+  });
+
+  signInBtn.addEventListener('click', () => {
+    const clientId = document.getElementById('clientId').value.trim();
+    if (!clientId) { setStatus('Paste your OAuth Client ID first.', 'error'); return; }
+    tokenClient = initGoogleAuth({
+      clientId,
+      onToken: () => setStatus('Signed in — session active.', 'ok'),
+      onError: (err) => setStatus('Sign-in error: ' + err, 'error')
+    });
+    tokenClient.requestAccessToken();
+  });
+</script>
+</body>
+</html>

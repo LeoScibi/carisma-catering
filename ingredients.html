@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Carisma Ops — Ingredients</title>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<header class="app-header">
+  <div class="brand">Carisma <span>Ops</span></div>
+  <nav class="app-nav">
+    <a href="index.html">Dashboard</a>
+    <a href="ingredients.html" class="active">Ingredients</a>
+    <a href="quotes.html">Quotes</a>
+  </nav>
+</header>
+
+<main>
+  <h1>Ingredient Database</h1>
+  <p class="sub">Reads/writes the <strong>Ingredients</strong> tab directly. Sign in from the Dashboard first if you land here signed out.</p>
+
+  <div id="signedOutNotice" class="card" style="display:none;">
+    <span class="badge off">Not signed in</span>
+    <p style="font-size:13px; color:var(--muted); margin-bottom:0;">Go to the <a href="index.html">Dashboard</a> to sign in — your session will carry over here.</p>
+  </div>
+
+  <div class="card" id="formCard" style="display:none;">
+    <h2 style="margin-top:0;">Add ingredient</h2>
+    <form id="addForm">
+      <div class="field-row">
+        <div><label style="margin-top:0;">Ingredient *</label><input id="f_ingredient" required></div>
+        <div><label style="margin-top:0;">Code *</label><input id="f_code" required></div>
+      </div>
+      <div class="field-row">
+        <div><label>Supplier</label><input id="f_supplier"></div>
+        <div><label>Main Category</label><input id="f_category"></div>
+      </div>
+      <div class="field-row">
+        <div><label>Case Weight</label><input id="f_caseweight"></div>
+        <div><label>Unit</label><input id="f_unit"></div>
+      </div>
+      <div class="field-row">
+        <div><label>Shelf Life</label><input id="f_shelflife"></div>
+        <div><label>Storage</label><input id="f_storage"></div>
+      </div>
+      <label>Description</label>
+      <textarea id="f_description"></textarea>
+      <div class="field-row">
+        <div><label>Image 1 (URL)</label><input id="f_image1"></div>
+        <div><label>Image 2 (URL)</label><input id="f_image2"></div>
+      </div>
+      <div class="field-row">
+        <div><label>Image 3 (URL)</label><input id="f_image3"></div>
+        <div><label>Banner (URL)</label><input id="f_banner"></div>
+      </div>
+      <div class="field-row">
+        <div><label>Recipes 1</label><input id="f_recipes1"></div>
+        <div><label>Recipes 2</label><input id="f_recipes2"></div>
+      </div>
+      <button type="submit" id="addBtn">Add ingredient</button>
+      <button type="button" id="reloadBtn" class="secondary">Reload list</button>
+    </form>
+    <div id="status" class="status-line"></div>
+  </div>
+
+  <h2>All ingredients</h2>
+  <table id="rowsTable" style="display:none;">
+    <thead><tr id="tableHead"></tr></thead>
+    <tbody id="tableBody"></tbody>
+  </table>
+</main>
+
+<script src="js/config.js"></script>
+<script src="js/sheets.js"></script>
+<script>
+  const SHEET_NAME = 'Ingredients';
+  const SHEET_RANGE = 'Ingredients!A:O';
+  const HEADERS = ['INGREDIENT','CODE','SUPPLIER','MAIN CATEGORY','IMAGE 1','IMAGE 2','IMAGE 3','BANNER','DESCRIPTION','CASE WEIGHT','UNIT','SHELF LIFE','STORAGE','RECIPES1','RECIPES2'];
+
+  const status = document.getElementById('status');
+  let token = null;
+  let cachedRows = []; // for duplicate-code checking
+
+  function setStatus(msg, kind) {
+    status.textContent = msg;
+    status.className = 'status-line' + (kind ? ' ' + kind : '');
+  }
+
+  function requireAuth() {
+    const cfg = getStoredConfig();
+    token = tryResumeSession();
+    if (!token || !cfg.spreadsheetId) {
+      document.getElementById('signedOutNotice').style.display = 'block';
+      document.getElementById('formCard').style.display = 'none';
+      return false;
+    }
+    document.getElementById('signedOutNotice').style.display = 'none';
+    document.getElementById('formCard').style.display = 'block';
+    return true;
+  }
+
+  async function loadRows() {
+    const cfg = getStoredConfig();
+    setStatus('Loading...');
+    try {
+      const rows = await sheetsGet(cfg.spreadsheetId, SHEET_RANGE, token);
+      cachedRows = rows;
+      renderTable(rows);
+      setStatus(`Loaded ${Math.max(rows.length - 1, 0)} ingredient(s).`, 'ok');
+    } catch (err) {
+      setStatus('Error loading: ' + err.message, 'error');
+    }
+  }
+
+  function renderTable(rows) {
+    const table = document.getElementById('rowsTable');
+    const head = document.getElementById('tableHead');
+    const body = document.getElementById('tableBody');
+    if (!rows.length) { table.style.display = 'none'; return; }
+    const [header, ...rest] = rows;
+    head.innerHTML = header.map(h => `<th>${h}</th>`).join('');
+    body.innerHTML = rest.map(r =>
+      '<tr>' + header.map((_, i) => `<td>${r[i] ?? ''}</td>`).join('') + '</tr>'
+    ).join('');
+    table.style.display = 'table';
+  }
+
+  function codeExists(code) {
+    if (cachedRows.length < 2) return false;
+    const [header, ...rest] = cachedRows;
+    const codeIdx = header.indexOf('CODE');
+    if (codeIdx === -1) return false;
+    return rest.some(r => (r[codeIdx] || '').trim().toLowerCase() === code.trim().toLowerCase());
+  }
+
+  document.getElementById('addForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (!requireAuth()) return;
+
+    const ingredient = document.getElementById('f_ingredient').value.trim();
+    const code = document.getElementById('f_code').value.trim();
+    if (!ingredient || !code) { setStatus('Ingredient and Code are required.', 'error'); return; }
+    if (codeExists(code)) { setStatus(`Code "${code}" already exists — use a unique code.`, 'error'); return; }
+
+    const row = [
+      ingredient,
+      code,
+      document.getElementById('f_supplier').value.trim(),
+      document.getElementById('f_category').value.trim(),
+      document.getElementById('f_image1').value.trim(),
+      document.getElementById('f_image2').value.trim(),
+      document.getElementById('f_image3').value.trim(),
+      document.getElementById('f_banner').value.trim(),
+      document.getElementById('f_description').value.trim(),
+      document.getElementById('f_caseweight').value.trim(),
+      document.getElementById('f_unit').value.trim(),
+      document.getElementById('f_shelflife').value.trim(),
+      document.getElementById('f_storage').value.trim(),
+      document.getElementById('f_recipes1').value.trim(),
+      document.getElementById('f_recipes2').value.trim()
+    ];
+
+    const cfg = getStoredConfig();
+    setStatus('Adding ingredient...');
+    try {
+      await sheetsAppend(cfg.spreadsheetId, SHEET_RANGE, row, token);
+      setStatus('Ingredient added.', 'ok');
+      e.target.reset();
+      loadRows();
+    } catch (err) {
+      setStatus('Error: ' + err.message, 'error');
+    }
+  });
+
+  document.getElementById('reloadBtn').addEventListener('click', loadRows);
+
+  window.addEventListener('load', () => {
+    if (requireAuth()) loadRows();
+  });
+</script>
+</body>
+</html>
