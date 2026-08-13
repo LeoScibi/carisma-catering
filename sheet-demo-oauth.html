@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Sheets API Demo (OAuth)</title>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<style>
+  body { font-family: -apple-system, Arial, sans-serif; max-width: 640px; margin: 40px auto; padding: 0 20px; color: #222; }
+  h1 { font-size: 20px; margin-bottom: 4px; }
+  p.sub { color: #666; margin-top: 0; font-size: 14px; }
+  label { display: block; font-size: 13px; font-weight: 600; margin-top: 14px; margin-bottom: 4px; }
+  input { width: 100%; padding: 8px 10px; border: 1px solid #ccc; border-radius: 6px; font-size: 14px; box-sizing: border-box; }
+  button { margin-top: 18px; padding: 10px 18px; border: none; border-radius: 6px; background: #1a1a1a; color: white; font-size: 14px; cursor: pointer; }
+  button:hover { background: #333; }
+  button.secondary { background: #eee; color: #222; margin-left: 8px; }
+  button:disabled { opacity: 0.4; cursor: not-allowed; }
+  #status { margin-top: 12px; font-size: 13px; }
+  table { width: 100%; border-collapse: collapse; margin-top: 24px; font-size: 13px; }
+  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid #eee; }
+  th { color: #666; font-weight: 600; }
+  #configBox { background: #fff8e6; border: 1px solid #f0d98c; padding: 10px 12px; border-radius: 6px; font-size: 13px; margin-bottom: 16px; }
+  #signedInBadge { display:none; background:#e6f4ea; border:1px solid #a8d5b5; padding:8px 12px; border-radius:6px; font-size:13px; margin-bottom:12px; }
+</style>
+</head>
+<body>
+
+<h1>Sheet Backend — Google Sheets API (OAuth)</h1>
+<p class="sub">Reads and writes to your Sheet directly via sheets.googleapis.com, no Apps Script involved.</p>
+
+<div id="configBox">
+  <label style="margin-top:0;">OAuth Client ID</label>
+  <input id="clientId" placeholder="XXXXXXXXX.apps.googleusercontent.com">
+  <label>Spreadsheet ID</label>
+  <input id="spreadsheetId" placeholder="Found in the sheet's URL between /d/ and /edit">
+  <label>Sheet/tab name + range</label>
+  <input id="range" placeholder="e.g. Data!A:E" value="Data!A:E">
+  <button id="signInBtn" type="button">Sign in with Google</button>
+</div>
+
+<div id="signedInBadge"></div>
+
+<form id="addForm">
+  <label>Ingredient</label>
+  <input id="ingredient" required placeholder="e.g. Basil">
+
+  <label>Code</label>
+  <input id="code" required placeholder="e.g. HB001">
+
+  <label>Supplier</label>
+  <input id="supplier" placeholder="e.g. XYZ Foods">
+
+  <label>Main Category</label>
+  <input id="category" placeholder="e.g. Fresh Herbs">
+
+  <button type="submit" id="addBtn" disabled>Add row</button>
+  <button type="button" id="loadBtn" class="secondary" disabled>Load rows</button>
+</form>
+
+<div id="status"></div>
+<table id="rowsTable" style="display:none;">
+  <thead><tr id="tableHead"></tr></thead>
+  <tbody id="tableBody"></tbody>
+</table>
+
+<script>
+  let accessToken = null;
+  const status = document.getElementById('status');
+  const addBtn = document.getElementById('addBtn');
+  const loadBtn = document.getElementById('loadBtn');
+  const badge = document.getElementById('signedInBadge');
+
+  document.getElementById('signInBtn').addEventListener('click', () => {
+    const clientId = document.getElementById('clientId').value.trim();
+    if (!clientId) { status.textContent = 'Paste your OAuth Client ID first.'; return; }
+
+    const tokenClient = google.accounts.oauth2.initTokenClient({
+      client_id: clientId,
+      scope: 'https://www.googleapis.com/auth/spreadsheets',
+      callback: (resp) => {
+        if (resp.error) { status.textContent = 'Sign-in error: ' + resp.error; return; }
+        accessToken = resp.access_token;
+        badge.style.display = 'block';
+        badge.textContent = 'Signed in — token active.';
+        addBtn.disabled = false;
+        loadBtn.disabled = false;
+        status.textContent = '';
+      }
+    });
+    tokenClient.requestAccessToken();
+  });
+
+  function sheetsUrl() {
+    const id = document.getElementById('spreadsheetId').value.trim();
+    const range = encodeURIComponent(document.getElementById('range').value.trim());
+    return `https://sheets.googleapis.com/v4/spreadsheets/${id}/values/${range}`;
+  }
+
+  document.getElementById('addForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (!accessToken) { status.textContent = 'Sign in first.'; return; }
+
+    const row = [
+      document.getElementById('ingredient').value,
+      document.getElementById('code').value,
+      document.getElementById('supplier').value,
+      document.getElementById('category').value,
+      new Date().toISOString()
+    ];
+
+    status.textContent = 'Adding row...';
+    try {
+      const res = await fetch(sheetsUrl() + ':append?valueInputOption=USER_ENTERED', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ values: [row] })
+      });
+      if (!res.ok) throw new Error((await res.json()).error?.message || res.statusText);
+      status.textContent = 'Row added.';
+      e.target.reset();
+    } catch (err) {
+      status.textContent = 'Error: ' + err.message;
+    }
+  });
+
+  loadBtn.addEventListener('click', async () => {
+    if (!accessToken) { status.textContent = 'Sign in first.'; return; }
+
+    status.textContent = 'Loading...';
+    try {
+      const res = await fetch(sheetsUrl(), {
+        headers: { 'Authorization': `Bearer ${accessToken}` }
+      });
+      if (!res.ok) throw new Error((await res.json()).error?.message || res.statusText);
+      const data = await res.json();
+      renderTable(data.values || []);
+      status.textContent = `Loaded ${(data.values || []).length} rows (including header).`;
+    } catch (err) {
+      status.textContent = 'Error: ' + err.message;
+    }
+  });
+
+  function renderTable(rows) {
+    const table = document.getElementById('rowsTable');
+    const head = document.getElementById('tableHead');
+    const body = document.getElementById('tableBody');
+    if (!rows.length) { table.style.display = 'none'; return; }
+
+    const [header, ...rest] = rows;
+    head.innerHTML = header.map(h => `<th>${h}</th>`).join('');
+    body.innerHTML = rest.map(r =>
+      '<tr>' + header.map((_, i) => `<td>${r[i] ?? ''}</td>`).join('') + '</tr>'
+    ).join('');
+    table.style.display = 'table';
+  }
+</script>
+
+</body>
+</html>
