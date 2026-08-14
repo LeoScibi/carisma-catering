@@ -30,46 +30,59 @@
     <p style="font-size:13px; color:var(--muted); margin-bottom:0;">Go to the <a href="index.html">Dashboard</a> to sign in — your session will carry over here.</p>
   </div>
 
-  <div class="card" id="formCard" style="display:none;">
-    <h2 style="margin-top:0;">Add ingredient</h2>
-    <form id="addForm">
-      <div class="field-row">
-        <div><label style="margin-top:0;">Name *</label><input id="f_name" required></div>
-        <div><label style="margin-top:0;">Category</label><input id="f_category" placeholder="e.g. Dry Goods, Dairy, Produce"></div>
-      </div>
-      <div class="field-row">
-        <div>
-          <label>Measure type *</label>
-          <select id="f_measuretype" required>
-            <option value="">Choose one...</option>
-            <option value="Weight">Weight</option>
-            <option value="Volume">Volume</option>
-            <option value="Unit">Unit</option>
-          </select>
-          <p class="hint" id="measureHint">This locks how the ingredient is always used in recipes, regardless of how a supplier packages it.</p>
-        </div>
-        <div>
-          <label>Base unit</label>
-          <input id="f_baseunit" disabled placeholder="Set automatically">
-        </div>
-      </div>
-      <label>Description</label>
-      <textarea id="f_description"></textarea>
-      <div class="field-row">
-        <div><label>Storage</label><input id="f_storage" placeholder="e.g. Chilled, Ambient, Frozen"></div>
-        <div><label>Shelf life</label><input id="f_shelflife"></div>
-      </div>
-      <button type="submit" id="addBtn">Add ingredient</button>
-      <button type="button" id="reloadBtn" class="secondary">Reload list</button>
-    </form>
-    <div id="status" class="status-line"></div>
+  <div class="toolbar" id="toolbar" style="display:none;">
+    <button type="button" id="openAddBtn" class="add-btn"><span class="plus">+</span> Add ingredient</button>
+    <button type="button" id="reloadBtn" class="secondary">Reload list</button>
   </div>
 
   <h2>All ingredients</h2>
+  <div id="pageStatus" class="status-line"></div>
   <table id="rowsTable" style="display:none;">
     <thead><tr id="tableHead"></tr></thead>
     <tbody id="tableBody"></tbody>
   </table>
+
+  <dialog id="addDialog">
+    <div class="dialog-head">
+      <h2>Add ingredient</h2>
+      <button type="button" class="dialog-close" id="closeAddBtn" aria-label="Close">&times;</button>
+    </div>
+    <div class="dialog-body">
+      <form id="addForm">
+        <div class="field-row">
+          <div><label style="margin-top:0;">Name *</label><input id="f_name" required></div>
+          <div>
+            <label style="margin-top:0;">Category</label>
+            <input id="f_category" list="categoryOptions" placeholder="Choose or type a new one" autocomplete="off">
+            <datalist id="categoryOptions"></datalist>
+          </div>
+        </div>
+        <div class="field-row">
+          <div>
+            <label>Measure type *</label>
+            <select id="f_measuretype" required>
+              <option value="">Choose one...</option>
+              <option value="Weight">Weight</option>
+              <option value="Volume">Volume</option>
+              <option value="Unit">Unit</option>
+            </select>
+            <p class="hint" id="measureHint">This locks how the ingredient is always used in recipes, regardless of how a supplier packages it.</p>
+          </div>
+          <div>
+            <label>Base unit</label>
+            <input id="f_baseunit" disabled placeholder="Set automatically">
+          </div>
+        </div>
+        <div class="field-row">
+          <div><label>Storage</label><input id="f_storage" placeholder="e.g. Chilled, Ambient, Frozen"></div>
+          <div><label>Shelf life</label><input id="f_shelflife"></div>
+        </div>
+        <button type="submit" id="addBtn">Add ingredient</button>
+        <button type="button" id="cancelAddBtn" class="secondary">Cancel</button>
+      </form>
+      <div id="status" class="status-line"></div>
+    </div>
+  </dialog>
 </main>
 
 <script src="js/config.js"></script>
@@ -80,12 +93,20 @@
   const HEADERS = ['ID','NAME','CATEGORY','MEASURE TYPE','BASE UNIT','DESCRIPTION','STORAGE','SHELF LIFE'];
 
   const status = document.getElementById('status');
+  const pageStatus = document.getElementById('pageStatus');
   let token = null;
   let cachedRows = [HEADERS];
 
+  // Status inside the Add dialog (in-progress / validation / add errors).
   function setStatus(msg, kind) {
     status.textContent = msg;
     status.className = 'status-line' + (kind ? ' ' + kind : '');
+  }
+
+  // Status on the list itself (stays visible after the dialog closes).
+  function setPageStatus(msg, kind) {
+    pageStatus.textContent = msg;
+    pageStatus.className = 'status-line' + (kind ? ' ' + kind : '');
   }
 
   function requireAuth() {
@@ -93,28 +114,63 @@
     token = tryResumeSession();
     if (!token || !cfg.spreadsheetId) {
       document.getElementById('signedOutNotice').style.display = 'block';
-      document.getElementById('formCard').style.display = 'none';
+      document.getElementById('toolbar').style.display = 'none';
       return false;
     }
     document.getElementById('signedOutNotice').style.display = 'none';
-    document.getElementById('formCard').style.display = 'block';
+    document.getElementById('toolbar').style.display = 'flex';
     return true;
   }
+
+  const addDialog = document.getElementById('addDialog');
+
+  function openAddDialog() {
+    if (!requireAuth()) return;
+    setStatus('');
+    populateCategories(cachedRows);
+    addDialog.showModal();
+    document.getElementById('f_name').focus();
+  }
+
+  function closeAddDialog() {
+    addDialog.close();
+    document.getElementById('addForm').reset();
+    document.getElementById('f_baseunit').value = '';
+    setStatus('');
+  }
+
+  document.getElementById('openAddBtn').addEventListener('click', openAddDialog);
+  document.getElementById('closeAddBtn').addEventListener('click', closeAddDialog);
+  document.getElementById('cancelAddBtn').addEventListener('click', closeAddDialog);
 
   document.getElementById('f_measuretype').addEventListener('change', (e) => {
     document.getElementById('f_baseunit').value = baseUnitFor(e.target.value);
   });
 
+  // Fills the category combobox with the distinct categories already in use,
+  // so existing ones are one click away while a brand-new one can still be typed.
+  function populateCategories(rows) {
+    const seen = new Set();
+    for (let i = 1; i < rows.length; i++) {
+      const cat = (rows[i][2] || '').toString().trim();
+      if (cat) seen.add(cat);
+    }
+    const options = [...seen].sort((a, b) => a.localeCompare(b));
+    document.getElementById('categoryOptions').innerHTML =
+      options.map(c => `<option value="${c.replace(/"/g, '&quot;')}"></option>`).join('');
+  }
+
   async function loadRows() {
     const cfg = getStoredConfig();
-    setStatus('Loading...');
+    setPageStatus('Loading...');
     try {
       const rows = await sheetsGet(cfg.spreadsheetId, RANGE, token);
       cachedRows = rows.length ? rows : [HEADERS];
       renderTable(cachedRows);
-      setStatus(`Loaded ${Math.max(cachedRows.length - 1, 0)} ingredient(s).`, 'ok');
+      populateCategories(cachedRows);
+      setPageStatus(`Loaded ${Math.max(cachedRows.length - 1, 0)} ingredient(s).`, 'ok');
     } catch (err) {
-      setStatus('Error loading: ' + err.message, 'error');
+      setPageStatus('Error loading: ' + err.message, 'error');
     }
   }
 
@@ -153,17 +209,18 @@
         document.getElementById('f_category').value.trim(),
         measureType,
         baseUnitFor(measureType),
-        document.getElementById('f_description').value.trim(),
+        '', // DESCRIPTION column kept for schema alignment, no longer captured
         document.getElementById('f_storage').value.trim(),
         document.getElementById('f_shelflife').value.trim()
       ];
 
       setStatus('Adding ingredient...');
       await sheetsAppend(cfg.spreadsheetId, RANGE, row, token);
-      setStatus(`Ingredient ${id} added.`, 'ok');
+      addDialog.close();
       e.target.reset();
       document.getElementById('f_baseunit').value = '';
-      loadRows();
+      await loadRows();
+      setPageStatus(`Ingredient ${id} added.`, 'ok');
     } catch (err) {
       setStatus('Error: ' + err.message, 'error');
     }

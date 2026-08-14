@@ -170,3 +170,41 @@ tr:hover td { background: #faf8f5; }
 }
 .totals .line { display: flex; justify-content: space-between; padding: 4px 0; color: var(--muted); }
 .totals .line.grand { color: var(--ink); font-weight: 700; font-size: 16px; border-top: 1px solid var(--line); margin-top: 6px; padding-top: 10px; }
+
+/* Toolbar above a list (e.g. the "+ Add" action) */
+.toolbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 6px 0 4px; }
+.toolbar button { margin-top: 0; }
+button.add-btn { display: inline-flex; align-items: center; gap: 7px; }
+button.add-btn .plus { font-size: 17px; line-height: 1; font-weight: 700; }
+
+/* Modal dialog (used for the Add forms) */
+dialog {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 0;
+  max-width: 560px;
+  width: calc(100% - 40px);
+  background: white;
+  color: var(--ink);
+  box-shadow: 0 10px 40px rgba(28, 28, 28, 0.18);
+}
+dialog::backdrop { background: rgba(28, 28, 28, 0.38); }
+.dialog-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--line);
+}
+.dialog-head h2 { margin: 0; font-size: 16px; }
+.dialog-close {
+  margin: 0;
+  padding: 4px 10px;
+  background: white;
+  color: var(--muted);
+  border: 1px solid var(--line);
+  font-size: 16px;
+  line-height: 1;
+}
+.dialog-close:hover { background: white; border-color: var(--accent); color: var(--accent); }
+.dialog-body { padding: 6px 20px 20px; }
