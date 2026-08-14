@@ -15,7 +15,7 @@
     <a href="index.html">Dashboard</a>
     <a href="ingredients.html">Ingredients</a>
     <a href="suppliers.html">Suppliers</a>
-    <a href="supplier-ingredients.html">Supplier Prices</a>
+    <a href="supplier-ingredients.html">Price Lists</a>
     <a href="recipes.html" class="active">Recipes</a>
     <a href="import.html">Import</a>
     <a href="setup.html">Setup</a>
@@ -405,7 +405,7 @@
     const supplierId = document.getElementById('ln_supplier').value || '';
 
     if (!comp.ref || !qty || !unit) { setLnStatus('Component, quantity, and unit are required.', 'error'); return; }
-    if (comp.type === 'Ingredient' && !supplierId) { setLnStatus('This ingredient has no supplier price yet — add one on the Supplier Prices page first.', 'error'); return; }
+    if (comp.type === 'Ingredient' && !supplierId) { setLnStatus('This ingredient has no supplier price yet — add one on the Price Lists page first.', 'error'); return; }
 
     const lineCost = recalcLineCost();
     if (lineCost === null) { setLnStatus('Could not calculate line cost — check the values.', 'error'); return; }
