@@ -220,6 +220,14 @@ dialog::backdrop { background: rgba(28, 28, 28, 0.38); }
 /* Rows that open a detail view on click */
 table.clickable tbody tr { cursor: pointer; }
 
+/* Recipe detail pills */
+.pill-row { display: flex; gap: 8px; margin: 8px 0 4px; flex-wrap: wrap; }
+.badge.muted { border-color: var(--line); background: #f4f2ee; color: var(--muted); }
+
+/* Compact controls inside the paste-review table */
+#reviewTable td select, #reviewTable td input { padding: 6px 8px; font-size: 13px; }
+#reviewTable td { vertical-align: middle; }
+
 /* Inline dietary checkboxes */
 .checks { display: flex; gap: 18px; flex-wrap: wrap; margin-top: 14px; }
 .checks label {

@@ -33,47 +33,18 @@
 
   <div id="appBody" style="display:none;">
 
-    <div class="card">
-      <h2 style="margin-top:0;">Create recipe</h2>
-      <form id="newRecipeForm">
-        <div class="field-row">
-          <div><label style="margin-top:0;">Name *</label><input id="nr_name" required></div>
-          <div>
-            <label style="margin-top:0;">Type *</label>
-            <select id="nr_type" required>
-              <option value="Dish">Dish</option>
-              <option value="Sub-recipe">Sub-recipe</option>
-            </select>
-          </div>
-        </div>
-        <div class="field-row three">
-          <div>
-            <label>Yield measure type *</label>
-            <select id="nr_measuretype" required>
-              <option value="">Choose one...</option>
-              <option value="Weight">Weight</option>
-              <option value="Volume">Volume</option>
-              <option value="Unit">Unit</option>
-            </select>
-          </div>
-          <div><label>Yield amount *</label><input id="nr_yieldamount" type="number" step="0.01" min="0" required></div>
-          <div>
-            <label>Yield unit *</label>
-            <select id="nr_yieldunit" required><option value="">Choose measure type first</option></select>
-          </div>
-        </div>
-        <p class="hint">This is the portion size — e.g. this recipe makes 2 kg, or 500 ml, or 12 pc — the same weight/volume/unit logic used everywhere else. It's what lets this recipe be used as a component inside another one.</p>
-        <button type="submit" id="nr_addBtn">Create recipe</button>
-      </form>
-      <div id="nr_status" class="status-line"></div>
+    <div class="toolbar" id="recipeToolbar">
+      <button type="button" id="openNewRecipeBtn" class="add-btn"><span class="plus">+</span> New recipe</button>
+      <button type="button" id="reloadAllBtn" class="secondary">Reload</button>
     </div>
 
-    <div class="card">
-      <h2 style="margin-top:0;">Open a recipe</h2>
-      <label style="margin-top:0;">Recipe</label>
-      <select id="recipeSelect"><option value="">Loading recipes...</option></select>
-      <button type="button" id="reloadAllBtn" class="secondary">Reload everything</button>
-    </div>
+    <h2>All recipes</h2>
+    <div id="pageStatus" class="status-line"></div>
+    <p class="sub" id="recipeHint" style="display:none;">Click a recipe to open it, add lines, or paste an ingredient list.</p>
+    <table id="recipeTable" class="clickable" style="display:none;">
+      <thead><tr><th>Recipe</th><th>Type</th><th>Yield</th><th>Total cost</th></tr></thead>
+      <tbody id="recipeListBody"></tbody>
+    </table>
 
     <div id="recipeDetail" style="display:none;">
       <div class="card">
@@ -86,10 +57,13 @@
           <div class="line grand"><span>Total cost</span><span id="rd_totalcost">£0.00</span></div>
           <div class="line"><span>Cost per base unit</span><span id="rd_costperbase">£0.00</span></div>
         </div>
+        <div class="toolbar">
+          <button type="button" id="openPasteBtn" class="add-btn"><span class="plus">+</span> Paste recipe text</button>
+        </div>
       </div>
 
       <div class="card">
-        <h2 style="margin-top:0;">Add line</h2>
+        <h2 style="margin-top:0;">Add a single line</h2>
         <form id="lineForm">
           <div class="field-row">
             <div>
@@ -131,15 +105,107 @@
     </div>
 
   </div>
+
+  <!-- New recipe dialog -->
+  <dialog id="newRecipeDialog">
+    <div class="dialog-head">
+      <h2>New recipe</h2>
+      <button type="button" class="dialog-close" id="closeNewRecipeBtn" aria-label="Close">&times;</button>
+    </div>
+    <div class="dialog-body">
+      <form id="newRecipeForm">
+        <div class="field-row">
+          <div><label style="margin-top:0;">Name *</label><input id="nr_name" required></div>
+          <div>
+            <label style="margin-top:0;">Type *</label>
+            <select id="nr_type" required>
+              <option value="Dish">Dish</option>
+              <option value="Sub-recipe">Sub-recipe</option>
+            </select>
+          </div>
+        </div>
+        <div class="field-row three">
+          <div>
+            <label>Yield measure type *</label>
+            <select id="nr_measuretype" required>
+              <option value="">Choose one...</option>
+              <option value="Weight">Weight</option>
+              <option value="Volume">Volume</option>
+              <option value="Unit">Unit</option>
+            </select>
+          </div>
+          <div><label>Yield amount *</label><input id="nr_yieldamount" type="number" step="0.01" min="0" required></div>
+          <div>
+            <label>Yield unit *</label>
+            <select id="nr_yieldunit" required><option value="">Choose measure type first</option></select>
+          </div>
+        </div>
+        <p class="hint">The portion size — e.g. this recipe makes 2 kg, 500 ml, or 12 pc. It's what lets this recipe be used as a component inside another one.</p>
+        <button type="submit" id="nr_addBtn">Create recipe</button>
+        <button type="button" id="nr_cancelBtn" class="secondary">Cancel</button>
+      </form>
+      <div id="nr_status" class="status-line"></div>
+    </div>
+  </dialog>
+
+  <!-- Paste recipe dialog -->
+  <dialog id="pasteDialog">
+    <div class="dialog-head">
+      <h2>Paste a recipe</h2>
+      <button type="button" class="dialog-close" id="closePasteBtn" aria-label="Close">&times;</button>
+    </div>
+    <div class="dialog-body">
+      <p class="sub">Paste an ingredient list — one item per line. We match each to your ingredients, let you create the missing ones, set quantities (cooking units auto-convert to metric), and pick a supplier price. Review, then add them all.</p>
+      <textarea id="pasteText" style="min-height:120px; font-family:ui-monospace, Menlo, monospace; font-size:12px;" placeholder="200g plain flour&#10;2 cloves garlic&#10;1 tbsp olive oil&#10;3 eggs"></textarea>
+      <button type="button" id="parseBtn">Parse</button>
+      <div id="parseSummary" class="sub" style="margin-top:10px;"></div>
+      <div style="overflow-x:auto;">
+        <table id="reviewTable" style="display:none;">
+          <thead><tr>
+            <th>Use</th><th>Pasted</th><th>Ingredient</th><th>Measure</th>
+            <th>Qty</th><th>Unit</th><th>Supplier / price</th><th>Line cost</th>
+          </tr></thead>
+          <tbody id="reviewBody"></tbody>
+        </table>
+      </div>
+      <button type="button" id="addParsedBtn" style="display:none;">Add lines to recipe</button>
+      <div id="pasteStatus" class="status-line"></div>
+    </div>
+  </dialog>
+
+  <!-- Inline supplier-link dialog (used from the review table) -->
+  <dialog id="linkDialog">
+    <div class="dialog-head">
+      <h2 id="linkTitle">Link supplier</h2>
+      <button type="button" class="dialog-close" id="closeLinkBtn" aria-label="Close">&times;</button>
+    </div>
+    <div class="dialog-body">
+      <form id="linkForm2">
+        <label style="margin-top:0;">Supplier *</label>
+        <select id="lk_supplier" required></select>
+        <div class="field-row three">
+          <div><label>Pack size *</label><input id="lk_packsize" type="number" step="0.01" min="0" required></div>
+          <div><label>Pack unit *</label><select id="lk_packunit" required></select></div>
+          <div><label>Price (£) *</label><input id="lk_price" type="number" step="0.01" min="0" required></div>
+        </div>
+        <div class="totals"><div class="line"><span>Cost per base unit</span><span id="lk_cost">—</span></div></div>
+        <button type="submit" id="lk_addBtn">Save price</button>
+        <button type="button" id="lk_cancelBtn" class="secondary">Cancel</button>
+      </form>
+      <div id="lk_status" class="status-line"></div>
+    </div>
+  </dialog>
 </main>
 
 <script src="js/config.js?v=2"></script>
 <script src="js/sheets.js?v=2"></script>
 <script src="js/units.js?v=2"></script>
 <script>
-  const ING_RANGE = 'Ingredients!A:H';
+  const ING_RANGE = 'Ingredients!A:K';
+  const ING_HEADERS = ['ID','NAME','CATEGORY','MEASURE TYPE','BASE UNIT','DESCRIPTION','STORAGE','SHELF LIFE','VEGAN','VEGETARIAN','GLUTEN FREE'];
   const SUP_RANGE = 'Suppliers!A:D';
   const SI_RANGE = 'SupplierIngredients!A:G';
+  const SI_HEADERS = ['ID','INGREDIENT ID','SUPPLIER ID','PACK SIZE','PACK UNIT','PRICE','COST PER BASE UNIT'];
   const REC_RANGE = 'Recipes!A:H';
   const REC_HEADERS = ['ID','NAME','TYPE','YIELD MEASURE TYPE','YIELD AMOUNT','YIELD UNIT','TOTAL COST','COST PER BASE UNIT'];
   const RL_RANGE = 'RecipeLines!A:H';
@@ -152,12 +218,17 @@
   let recipesAll = [];          // {id, name, type, yieldMeasureType, yieldAmount, yieldUnit, totalCost, costPerBase}
   let currentRecipe = null;
   let currentLines = [];
+  let parsedRows = [];          // paste-importer review model
 
   const nrStatus = document.getElementById('nr_status');
   const lnStatus = document.getElementById('ln_status');
+  const pageStatus = document.getElementById('pageStatus');
+  const pasteStatus = document.getElementById('pasteStatus');
 
-  function setNrStatus(msg, kind) { nrStatus.textContent = msg; nrStatus.className = 'status-line' + (kind ? ' ' + kind : ''); }
-  function setLnStatus(msg, kind) { lnStatus.textContent = msg; lnStatus.className = 'status-line' + (kind ? ' ' + kind : ''); }
+  function setNrStatus(m, k) { nrStatus.textContent = m; nrStatus.className = 'status-line' + (k ? ' ' + k : ''); }
+  function setLnStatus(m, k) { lnStatus.textContent = m; lnStatus.className = 'status-line' + (k ? ' ' + k : ''); }
+  function setPageStatus(m, k) { pageStatus.textContent = m; pageStatus.className = 'status-line' + (k ? ' ' + k : ''); }
+  function setPasteStatus(m, k) { pasteStatus.textContent = m; pasteStatus.className = 'status-line' + (k ? ' ' + k : ''); }
 
   function requireAuth() {
     const cfg = getStoredConfig();
@@ -171,40 +242,6 @@
     document.getElementById('appBody').style.display = 'block';
     return true;
   }
-
-  // ---------- New recipe form ----------
-  document.getElementById('nr_measuretype').addEventListener('change', (e) => {
-    const sel = document.getElementById('nr_yieldunit');
-    const opts = unitsForType(e.target.value);
-    sel.innerHTML = opts.length ? opts.map(u => `<option value="${u}">${u}</option>`).join('') : '<option value="">Choose measure type first</option>';
-  });
-
-  document.getElementById('newRecipeForm').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    if (!requireAuth()) return;
-    const name = document.getElementById('nr_name').value.trim();
-    const type = document.getElementById('nr_type').value;
-    const measureType = document.getElementById('nr_measuretype').value;
-    const yieldAmount = parseFloat(document.getElementById('nr_yieldamount').value);
-    const yieldUnit = document.getElementById('nr_yieldunit').value;
-    if (!name || !measureType || !yieldAmount || !yieldUnit) { setNrStatus('All fields are required.', 'error'); return; }
-
-    const cfg = getStoredConfig();
-    setNrStatus('Creating recipe...');
-    try {
-      const existing = await sheetsGet(cfg.spreadsheetId, REC_RANGE, token);
-      const rows = existing.length ? existing : [REC_HEADERS];
-      const id = nextId(rows, 'REC');
-      const row = [id, name, type, measureType, yieldAmount, yieldUnit, '0.00', '0.0000'];
-      await sheetsAppend(cfg.spreadsheetId, REC_RANGE, row, token);
-      setNrStatus(`Recipe ${id} created. Select it below to add lines.`, 'ok');
-      e.target.reset();
-      document.getElementById('nr_yieldunit').innerHTML = '<option value="">Choose measure type first</option>';
-      await loadRecipesOnly();
-    } catch (err) {
-      setNrStatus('Error: ' + err.message, 'error');
-    }
-  });
 
   // ---------- Lookups ----------
   async function loadIngredients() {
@@ -234,32 +271,101 @@
       yieldAmount: parseFloat(r[4]) || 0, yieldUnit: r[5],
       totalCost: parseFloat(r[6]) || 0, costPerBase: parseFloat(r[7]) || 0
     })).filter(r => r.id);
-    renderRecipeSelect();
+    renderRecipeList();
   }
-
-  function renderRecipeSelect() {
-    const sel = document.getElementById('recipeSelect');
-    const keep = sel.value;
-    sel.innerHTML = recipesAll.length
-      ? '<option value="">Choose a recipe...</option>' + recipesAll.map(r => `<option value="${r.id}">${r.name} — ${r.type} (${fmtMoney2(r.totalCost)})</option>`).join('')
-      : '<option value="">No recipes yet — create one above</option>';
-    if (keep && recipesAll.some(r => r.id === keep)) sel.value = keep;
-  }
-
   async function loadAllLookups() {
     await Promise.all([loadIngredients(), loadSuppliers(), loadSupplierIngredients(), loadRecipesOnly()]);
   }
 
-  // ---------- Recipe detail / line builder ----------
-  document.getElementById('recipeSelect').addEventListener('change', (e) => {
-    const id = e.target.value;
+  function supplierName(id) { const s = suppliers.find(x => x.id === id); return s ? s.name : id; }
+  function ingredientById(id) { return ingredients.find(i => i.id === id) || null; }
+  function cheapestSupplierFor(ingredientId) {
+    const opts = supplierIngredients.filter(s => s.ingredientId === ingredientId);
+    if (!opts.length) return null;
+    return opts.reduce((a, b) => (b.costPerBase < a.costPerBase ? b : a));
+  }
+  function supplierCostPerBase(siId) { const s = supplierIngredients.find(x => x.id === siId); return s ? s.costPerBase : null; }
+
+  // ---------- Recipe list ----------
+  function renderRecipeList() {
+    const table = document.getElementById('recipeTable');
+    const body = document.getElementById('recipeListBody');
+    const hint = document.getElementById('recipeHint');
+    const none = () => { table.style.display = 'none'; hint.style.display = 'none'; };
+    if (!recipesAll.length) { none(); body.innerHTML = ''; return; }
+    body.innerHTML = recipesAll.map(r => `
+      <tr data-id="${r.id}">
+        <td>${r.name}</td>
+        <td>${r.type}</td>
+        <td>${r.yieldAmount} ${r.yieldUnit}</td>
+        <td>${fmtMoney2(r.totalCost)}</td>
+      </tr>
+    `).join('');
+    table.style.display = 'table';
+    hint.style.display = 'block';
+  }
+
+  document.getElementById('recipeListBody').addEventListener('click', (e) => {
+    const tr = e.target.closest('tr[data-id]');
+    if (tr) openRecipe(tr.dataset.id);
+  });
+
+  function openRecipe(id) {
     currentRecipe = recipesAll.find(r => r.id === id) || null;
     if (!currentRecipe) { document.getElementById('recipeDetail').style.display = 'none'; return; }
     renderRecipeDetail();
     refreshComponentOptions();
     loadLines();
+    document.getElementById('recipeDetail').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  // ---------- New recipe dialog ----------
+  const newRecipeDialog = document.getElementById('newRecipeDialog');
+  document.getElementById('openNewRecipeBtn').addEventListener('click', () => {
+    if (!requireAuth()) return;
+    setNrStatus('');
+    document.getElementById('newRecipeForm').reset();
+    document.getElementById('nr_yieldunit').innerHTML = '<option value="">Choose measure type first</option>';
+    newRecipeDialog.showModal();
+    document.getElementById('nr_name').focus();
+  });
+  document.getElementById('closeNewRecipeBtn').addEventListener('click', () => newRecipeDialog.close());
+  document.getElementById('nr_cancelBtn').addEventListener('click', () => newRecipeDialog.close());
+
+  document.getElementById('nr_measuretype').addEventListener('change', (e) => {
+    const sel = document.getElementById('nr_yieldunit');
+    const opts = unitsForType(e.target.value);
+    sel.innerHTML = opts.length ? opts.map(u => `<option value="${u}">${u}</option>`).join('') : '<option value="">Choose measure type first</option>';
   });
 
+  document.getElementById('newRecipeForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (!requireAuth()) return;
+    const name = document.getElementById('nr_name').value.trim();
+    const type = document.getElementById('nr_type').value;
+    const measureType = document.getElementById('nr_measuretype').value;
+    const yieldAmount = parseFloat(document.getElementById('nr_yieldamount').value);
+    const yieldUnit = document.getElementById('nr_yieldunit').value;
+    if (!name || !measureType || !yieldAmount || !yieldUnit) { setNrStatus('All fields are required.', 'error'); return; }
+
+    const cfg = getStoredConfig();
+    setNrStatus('Creating recipe...');
+    try {
+      const existing = await sheetsGet(cfg.spreadsheetId, REC_RANGE, token);
+      const rows = existing.length ? existing : [REC_HEADERS];
+      const id = nextId(rows, 'REC');
+      const row = [id, name, type, measureType, yieldAmount, yieldUnit, '0.00', '0.0000'];
+      await sheetsAppend(cfg.spreadsheetId, REC_RANGE, row, token);
+      await loadRecipesOnly();
+      newRecipeDialog.close();
+      setPageStatus(`Recipe ${id} created.`, 'ok');
+      openRecipe(id);
+    } catch (err) {
+      setNrStatus('Error: ' + err.message, 'error');
+    }
+  });
+
+  // ---------- Recipe detail ----------
   function renderRecipeDetail() {
     document.getElementById('recipeDetail').style.display = 'block';
     document.getElementById('rd_title').textContent = currentRecipe.name;
@@ -269,9 +375,15 @@
     document.getElementById('rd_costperbase').textContent = `${fmtMoney2(currentRecipe.costPerBase)} per ${baseUnitFor(currentRecipe.yieldMeasureType)}`;
   }
 
+  // ---------- Manual single-line builder ----------
   document.getElementById('ln_componenttype').addEventListener('change', refreshComponentOptions);
+  document.getElementById('ln_component').addEventListener('change', refreshUnitAndSupplierOptions);
+  document.getElementById('ln_quantity').addEventListener('input', recalcLineCost);
+  document.getElementById('ln_unit').addEventListener('change', recalcLineCost);
+  document.getElementById('ln_supplier').addEventListener('change', recalcLineCost);
 
   function refreshComponentOptions() {
+    if (!currentRecipe) return;
     const type = document.getElementById('ln_componenttype').value;
     const sel = document.getElementById('ln_component');
     if (type === 'Ingredient') {
@@ -290,32 +402,22 @@
   function currentComponent() {
     const type = document.getElementById('ln_componenttype').value;
     const id = document.getElementById('ln_component').value;
-    if (type === 'Ingredient') return { type, measureType: (ingredients.find(i => i.id === id) || {}).measureType, ref: ingredients.find(i => i.id === id) };
-    return { type, measureType: (recipesAll.find(r => r.id === id) || {}).yieldMeasureType, ref: recipesAll.find(r => r.id === id) };
+    if (type === 'Ingredient') { const ref = ingredientById(id); return { type, measureType: ref ? ref.measureType : '', ref }; }
+    const ref = recipesAll.find(r => r.id === id) || null;
+    return { type, measureType: ref ? ref.yieldMeasureType : '', ref };
   }
-
-  function cheapestSupplierFor(ingredientId) {
-    const options = supplierIngredients.filter(s => s.ingredientId === ingredientId);
-    if (!options.length) return null;
-    return options.reduce((a, b) => (b.costPerBase < a.costPerBase ? b : a));
-  }
-
-  document.getElementById('ln_component').addEventListener('change', refreshUnitAndSupplierOptions);
 
   function refreshUnitAndSupplierOptions() {
     const comp = currentComponent();
     const unitSel = document.getElementById('ln_unit');
     const supWrap = document.getElementById('ln_supplierWrap');
     const supSel = document.getElementById('ln_supplier');
-
     if (!comp.ref || !comp.measureType) {
       unitSel.innerHTML = '<option value="">Choose component first</option>';
       supSel.innerHTML = '<option value="">—</option>';
-      recalcLineCost();
-      return;
+      recalcLineCost(); return;
     }
     unitSel.innerHTML = unitsForType(comp.measureType).map(u => `<option value="${u}">${u}</option>`).join('');
-
     if (comp.type === 'Ingredient') {
       supWrap.style.display = 'block';
       const options = supplierIngredients.filter(s => s.ingredientId === comp.ref.id);
@@ -324,9 +426,8 @@
       } else {
         const cheapest = cheapestSupplierFor(comp.ref.id);
         supSel.innerHTML = options.map(o => {
-          const supName = (suppliers.find(x => x.id === o.supplierId) || {}).name || o.supplierId;
           const isCheapest = cheapest && o.id === cheapest.id;
-          return `<option value="${o.id}" ${isCheapest ? 'selected' : ''}>${supName} — ${fmtMoney2(o.costPerBase)}/${baseUnitFor(comp.measureType)}${isCheapest ? ' (cheapest)' : ''}</option>`;
+          return `<option value="${o.id}" ${isCheapest ? 'selected' : ''}>${supplierName(o.supplierId)} — ${fmtMoney2(o.costPerBase)}/${baseUnitFor(comp.measureType)}${isCheapest ? ' (cheapest)' : ''}</option>`;
         }).join('');
       }
     } else {
@@ -336,16 +437,11 @@
     recalcLineCost();
   }
 
-  document.getElementById('ln_quantity').addEventListener('input', recalcLineCost);
-  document.getElementById('ln_unit').addEventListener('change', recalcLineCost);
-  document.getElementById('ln_supplier').addEventListener('change', recalcLineCost);
-
   function costPerBaseForSelection() {
     const comp = currentComponent();
     if (!comp.ref) return null;
     if (comp.type === 'Ingredient') {
-      const supId = document.getElementById('ln_supplier').value;
-      const chosen = supplierIngredients.find(s => s.id === supId);
+      const chosen = supplierIngredients.find(s => s.id === document.getElementById('ln_supplier').value);
       return chosen ? chosen.costPerBase : null;
     }
     return comp.ref.costPerBase || 0;
@@ -358,55 +454,20 @@
     const box = document.getElementById('ln_linecost');
     const costPerBase = costPerBaseForSelection();
     if (!comp.ref || !qty || !unit || costPerBase === null) { box.textContent = '—'; return null; }
-    const baseAmount = toBaseAmount(comp.measureType, qty, unit);
-    const lineCost = baseAmount * costPerBase;
+    const lineCost = toBaseAmount(comp.measureType, qty, unit) * costPerBase;
     box.textContent = fmtMoney2(lineCost);
     return lineCost;
-  }
-
-  async function loadLines() {
-    const cfg = getStoredConfig();
-    const rows = await sheetsGet(cfg.spreadsheetId, RL_RANGE, token);
-    currentLines = (rows.slice(1) || []).map(r => ({
-      id: r[0], recipeId: r[1], componentType: r[2], componentId: r[3],
-      quantity: parseFloat(r[4]) || 0, unit: r[5], supplierId: r[6] || '', lineCost: parseFloat(r[7]) || 0
-    })).filter(l => l.id && l.recipeId === currentRecipe.id);
-    renderLinesTable();
-  }
-
-  function componentDisplayName(componentType, componentId) {
-    if (componentType === 'Ingredient') return (ingredients.find(i => i.id === componentId) || {}).name || componentId;
-    return (recipesAll.find(r => r.id === componentId) || {}).name || componentId;
-  }
-
-  function renderLinesTable() {
-    const table = document.getElementById('linesTable');
-    const body = document.getElementById('linesBody');
-    if (!currentLines.length) { table.style.display = 'none'; return; }
-    body.innerHTML = currentLines.map(l => `
-      <tr>
-        <td>${componentDisplayName(l.componentType, l.componentId)}</td>
-        <td>${l.componentType}</td>
-        <td>${l.quantity} ${l.unit}</td>
-        <td>${l.supplierId ? ((suppliers.find(s => s.id === l.supplierId) || {}).name || l.supplierId) : '—'}</td>
-        <td>${fmtMoney2(l.lineCost)}</td>
-      </tr>
-    `).join('');
-    table.style.display = 'table';
   }
 
   document.getElementById('lineForm').addEventListener('submit', async (e) => {
     e.preventDefault();
     if (!requireAuth() || !currentRecipe) return;
-
     const comp = currentComponent();
     const qty = parseFloat(document.getElementById('ln_quantity').value);
     const unit = document.getElementById('ln_unit').value;
     const supplierId = document.getElementById('ln_supplier').value || '';
-
     if (!comp.ref || !qty || !unit) { setLnStatus('Component, quantity, and unit are required.', 'error'); return; }
     if (comp.type === 'Ingredient' && !supplierId) { setLnStatus('This ingredient has no supplier price yet — add one on the Price Lists page first.', 'error'); return; }
-
     const lineCost = recalcLineCost();
     if (lineCost === null) { setLnStatus('Could not calculate line cost — check the values.', 'error'); return; }
 
@@ -418,57 +479,417 @@
       const lineId = nextId(rlRows, 'RL');
       const row = [lineId, currentRecipe.id, comp.type, comp.ref.id, qty, unit, supplierId, lineCost.toFixed(4)];
       await sheetsAppend(cfg.spreadsheetId, RL_RANGE, row, token);
-
-      setLnStatus('Recalculating recipe cost...');
       await recalcAndSaveRecipeCost(cfg);
-
-      setLnStatus('Line added.', 'ok');
+      await refreshCurrentRecipe();
       document.getElementById('ln_quantity').value = '';
       document.getElementById('ln_linecost').textContent = '—';
-      await loadRecipesOnly();
-      currentRecipe = recipesAll.find(r => r.id === currentRecipe.id);
-      renderRecipeDetail();
-      await loadLines();
+      setLnStatus('Line added.', 'ok');
     } catch (err) {
       setLnStatus('Error: ' + err.message, 'error');
     }
   });
 
-  // Sums all RecipeLines for currentRecipe, writes Total Cost + Cost per Base Unit back to its Recipes row.
+  async function loadLines() {
+    const cfg = getStoredConfig();
+    const rows = await sheetsGet(cfg.spreadsheetId, RL_RANGE, token);
+    currentLines = (rows.slice(1) || []).map(r => ({
+      id: r[0], recipeId: r[1], componentType: r[2], componentId: r[3],
+      quantity: parseFloat(r[4]) || 0, unit: r[5], supplierId: r[6] || '', lineCost: parseFloat(r[7]) || 0
+    })).filter(l => l.id && l.recipeId === currentRecipe.id);
+    renderLinesTable();
+  }
+
+  function componentDisplayName(type, id) {
+    if (type === 'Ingredient') return (ingredientById(id) || {}).name || id;
+    return (recipesAll.find(r => r.id === id) || {}).name || id;
+  }
+
+  function renderLinesTable() {
+    const table = document.getElementById('linesTable');
+    const body = document.getElementById('linesBody');
+    if (!currentLines.length) { table.style.display = 'none'; body.innerHTML = ''; return; }
+    body.innerHTML = currentLines.map(l => `
+      <tr>
+        <td>${componentDisplayName(l.componentType, l.componentId)}</td>
+        <td>${l.componentType}</td>
+        <td>${l.quantity} ${l.unit}</td>
+        <td>${l.supplierId ? supplierName(l.supplierId) : '—'}</td>
+        <td>${fmtMoney2(l.lineCost)}</td>
+      </tr>
+    `).join('');
+    table.style.display = 'table';
+  }
+
+  // Sums RecipeLines for currentRecipe and writes Total + Cost per base back to the Recipes row.
   async function recalcAndSaveRecipeCost(cfg) {
     const rlRows = await sheetsGet(cfg.spreadsheetId, RL_RANGE, token);
     const lines = (rlRows.slice(1) || []).filter(r => r[1] === currentRecipe.id);
     const totalCost = lines.reduce((sum, r) => sum + (parseFloat(r[7]) || 0), 0);
-
     const recRows = await sheetsGet(cfg.spreadsheetId, REC_RANGE, token);
     const rowIndex = recRows.findIndex((r, i) => i > 0 && r[0] === currentRecipe.id);
     if (rowIndex === -1) throw new Error('Could not find this recipe\'s row to update.');
-
     const yieldBaseAmount = toBaseAmount(currentRecipe.yieldMeasureType, currentRecipe.yieldAmount, currentRecipe.yieldUnit);
     const costPerBase = yieldBaseAmount ? totalCost / yieldBaseAmount : 0;
-
-    const sheetRow = rowIndex + 1; // 1-based row number in the sheet
+    const sheetRow = rowIndex + 1;
     await sheetsUpdateRange(cfg.spreadsheetId, `Recipes!G${sheetRow}:H${sheetRow}`, [[totalCost.toFixed(2), costPerBase.toFixed(4)]], token, 'USER_ENTERED');
   }
 
+  async function refreshCurrentRecipe() {
+    await loadRecipesOnly();
+    currentRecipe = recipesAll.find(r => r.id === currentRecipe.id) || null;
+    if (currentRecipe) { renderRecipeDetail(); await loadLines(); }
+    else { document.getElementById('recipeDetail').style.display = 'none'; }
+  }
+
   document.getElementById('reloadAllBtn').addEventListener('click', async () => {
+    if (!requireAuth()) return;
+    setPageStatus('Reloading...');
     await loadAllLookups();
     if (currentRecipe) {
       currentRecipe = recipesAll.find(r => r.id === currentRecipe.id) || null;
       if (currentRecipe) { renderRecipeDetail(); refreshComponentOptions(); await loadLines(); }
       else { document.getElementById('recipeDetail').style.display = 'none'; }
     }
+    setPageStatus(`Loaded ${recipesAll.length} recipe(s).`, 'ok');
+  });
+
+  // ================= Paste importer =================
+  const pasteDialog = document.getElementById('pasteDialog');
+
+  // Cooking unit -> [measure family, app unit, factor to that app unit]
+  const COOK_UNITS = {
+    g: ['Weight', 'g', 1], gram: ['Weight', 'g', 1], grams: ['Weight', 'g', 1], gr: ['Weight', 'g', 1],
+    kg: ['Weight', 'kg', 1], kilo: ['Weight', 'kg', 1], kilos: ['Weight', 'kg', 1], kilogram: ['Weight', 'kg', 1], kilograms: ['Weight', 'kg', 1],
+    oz: ['Weight', 'g', 28.35], ounce: ['Weight', 'g', 28.35], ounces: ['Weight', 'g', 28.35],
+    lb: ['Weight', 'g', 453.6], lbs: ['Weight', 'g', 453.6], pound: ['Weight', 'g', 453.6], pounds: ['Weight', 'g', 453.6],
+    ml: ['Volume', 'ml', 1], milliliter: ['Volume', 'ml', 1], millilitre: ['Volume', 'ml', 1], milliliters: ['Volume', 'ml', 1], millilitres: ['Volume', 'ml', 1],
+    l: ['Volume', 'L', 1], litre: ['Volume', 'L', 1], litres: ['Volume', 'L', 1], liter: ['Volume', 'L', 1], liters: ['Volume', 'L', 1],
+    tbsp: ['Volume', 'ml', 15], tbs: ['Volume', 'ml', 15], tablespoon: ['Volume', 'ml', 15], tablespoons: ['Volume', 'ml', 15],
+    tsp: ['Volume', 'ml', 5], teaspoon: ['Volume', 'ml', 5], teaspoons: ['Volume', 'ml', 5],
+    cup: ['Volume', 'ml', 240], cups: ['Volume', 'ml', 240],
+    pc: ['Unit', 'pc', 1], piece: ['Unit', 'pc', 1], pieces: ['Unit', 'pc', 1],
+    clove: ['Unit', 'pc', 1], cloves: ['Unit', 'pc', 1], slice: ['Unit', 'pc', 1], slices: ['Unit', 'pc', 1],
+    egg: ['Unit', 'pc', 1], eggs: ['Unit', 'pc', 1], can: ['Unit', 'pc', 1], cans: ['Unit', 'pc', 1], tin: ['Unit', 'pc', 1], tins: ['Unit', 'pc', 1],
+    bunch: ['Unit', 'pc', 1], bunches: ['Unit', 'pc', 1], sprig: ['Unit', 'pc', 1], sprigs: ['Unit', 'pc', 1],
+    dozen: ['Unit', 'pc', 12], pinch: ['Weight', 'g', 1], pinches: ['Weight', 'g', 1]
+  };
+  const UNI_FRAC = { '½': .5, '¼': .25, '¾': .75, '⅓': 1 / 3, '⅔': 2 / 3, '⅛': .125, '⅜': .375, '⅝': .625, '⅞': .875, '⅕': .2, '⅖': .4, '⅗': .6 };
+  const NOISE = /\b(fresh|dried|chopped|minced|diced|sliced|grated|shredded|ground|finely|roughly|large|small|medium|ripe|to taste|for garnish|optional|softened|melted|beaten|peeled|crushed|plus extra.*)\b/gi;
+
+  function normName(s) { return (s || '').toLowerCase().replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim(); }
+  function singular(w) { return (w.endsWith('es') && w.length > 4) ? w.slice(0, -2) : ((w.endsWith('s') && !w.endsWith('ss') && w.length > 3) ? w.slice(0, -1) : w); }
+  function nameTokens(s) { return normName(s).split(' ').filter(Boolean).map(singular); }
+
+  function matchIngredient(name) {
+    const nt = nameTokens(name);
+    if (!nt.length) return null;
+    let best = null, bestScore = 0;
+    for (const ing of ingredients) {
+      const it = nameTokens(ing.name);
+      if (!it.length) continue;
+      const overlap = nt.filter(t => it.includes(t)).length;
+      if (!overlap) continue;
+      const score = overlap / it.length + overlap / nt.length + (normName(ing.name) === normName(name) ? 1 : 0);
+      if (score > bestScore) { bestScore = score; best = ing; }
+    }
+    return bestScore >= 0.9 ? best : null;
+  }
+
+  function cleanName(s) {
+    let n = s.replace(/\(.*?\)/g, ' ').split(',')[0].replace(NOISE, ' ').replace(/\s+/g, ' ').trim();
+    return n;
+  }
+
+  function parseQtyUnit(raw) {
+    let s = raw.trim().replace(/^[\-\*•–—▪●·]\s*/, '');
+    let qty = null, m;
+    if (m = s.match(/^(\d+)\s+(\d+)\/(\d+)\s*/)) { qty = parseInt(m[1]) + parseInt(m[2]) / parseInt(m[3]); s = s.slice(m[0].length); }
+    else if (m = s.match(/^(\d+)\s*([½¼¾⅓⅔⅛⅜⅝⅞⅕⅖⅗])\s*/)) { qty = parseInt(m[1]) + UNI_FRAC[m[2]]; s = s.slice(m[0].length); }
+    else if (m = s.match(/^(\d+)\/(\d+)\s*/)) { qty = parseInt(m[1]) / parseInt(m[2]); s = s.slice(m[0].length); }
+    else if (m = s.match(/^([½¼¾⅓⅔⅛⅜⅝⅞⅕⅖⅗])\s*/)) { qty = UNI_FRAC[m[1]]; s = s.slice(m[0].length); }
+    else if (m = s.match(/^(\d+(?:\.\d+)?)\s*(?:-|–|to)\s*(\d+(?:\.\d+)?)\s*/)) { qty = parseFloat(m[1]); s = s.slice(m[0].length); }
+    else if (m = s.match(/^(\d+(?:\.\d+)?)\s*/)) { qty = parseFloat(m[1]); s = s.slice(m[0].length); }
+
+    let cook = null, unitRaw = '';
+    if (m = s.match(/^([a-zA-Z]+)\.?\s+/)) {
+      const t0 = m[1].toLowerCase();
+      const hit = COOK_UNITS[t0] || COOK_UNITS[singular(t0)]; // check raw first so plurals like "cloves" match
+      if (hit) { cook = hit; unitRaw = m[1]; s = s.slice(m[0].length); }
+    }
+    s = s.replace(/^of\s+/i, '');
+    return { qty, cook, unitRaw, name: cleanName(s), raw };
+  }
+
+  function looksLikeIngredient(p, raw) {
+    if (p.qty != null) return true;
+    const t = raw.trim();
+    if (!t || t.length > 45) return false;
+    if (/[.!?]$/.test(t)) return false;
+    if (/^(step|method|instructions?|directions?|preheat|heat|cook|bake|stir|serve|mix|add|combine|season|for the)/i.test(t)) return false;
+    return true;
+  }
+
+  function buildParsed(text) {
+    const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+    parsedRows = lines.map(raw => {
+      const p = parseQtyUnit(raw);
+      const match = p.name ? matchIngredient(p.name) : null;
+      let measureType = '', unit = '', qty = p.qty, note = '';
+      if (match) measureType = match.measureType;
+      else if (p.cook) measureType = p.cook[0];
+      else measureType = 'Unit';
+
+      if (p.cook) {
+        if (p.cook[0] === measureType) { unit = p.cook[1]; qty = (p.qty != null ? +(p.qty * p.cook[2]).toFixed(2) : null); }
+        else { unit = baseUnitFor(measureType); note = `“${p.unitRaw}” doesn’t fit ${measureType} — check qty/unit`; }
+      } else {
+        unit = (measureType === 'Unit') ? 'pc' : baseUnitFor(measureType);
+      }
+
+      const cheap = match ? cheapestSupplierFor(match.id) : null;
+      return {
+        raw, name: p.name || raw, note,
+        ingredientId: match ? match.id : '__new__',
+        measureType, unit, qty,
+        supplierId: cheap ? cheap.id : '',
+        include: looksLikeIngredient(p, raw)
+      };
+    });
+  }
+
+  function rowCostText(m) {
+    if (m.ingredientId === '__new__') return '—';
+    const cpb = supplierCostPerBase(m.supplierId);
+    if (cpb == null || m.qty == null || !m.unit || !m.measureType) return '—';
+    return fmtMoney2(toBaseAmount(m.measureType, m.qty, m.unit) * cpb);
+  }
+
+  function ingredientOptions(m) {
+    const newLabel = `＋ Create “${m.name}”`;
+    let html = `<option value="__new__" ${m.ingredientId === '__new__' ? 'selected' : ''}>${newLabel}</option>`;
+    html += ingredients.map(i => `<option value="${i.id}" ${m.ingredientId === i.id ? 'selected' : ''}>${i.name} (${i.measureType})</option>`).join('');
+    return html;
+  }
+  function measureOptions(m) {
+    const dis = m.ingredientId === '__new__' ? '' : 'disabled';
+    return `<select data-role="measure" data-idx="__IDX__" ${dis}>` +
+      ['Weight', 'Volume', 'Unit'].map(t => `<option value="${t}" ${m.measureType === t ? 'selected' : ''}>${t}</option>`).join('') + '</select>';
+  }
+  function unitOptions(m) {
+    const units = unitsForType(m.measureType) || [];
+    return units.map(u => `<option value="${u}" ${m.unit === u ? 'selected' : ''}>${u}</option>`).join('');
+  }
+  function supplierCell(m, idx) {
+    if (m.ingredientId === '__new__') return '<span style="color:var(--muted); font-size:12px;">create first</span>';
+    const opts = supplierIngredients.filter(s => s.ingredientId === m.ingredientId);
+    if (!opts.length) return `<button type="button" class="secondary" data-role="link" data-idx="${idx}" style="margin:0; padding:5px 10px;">Link supplier</button>`;
+    const cheap = cheapestSupplierFor(m.ingredientId);
+    return `<select data-role="supplier" data-idx="${idx}">` + opts.map(o =>
+      `<option value="${o.id}" ${m.supplierId === o.id ? 'selected' : ''}>${supplierName(o.supplierId)} — ${fmtMoney2(o.costPerBase)}${cheap && o.id === cheap.id ? ' (cheapest)' : ''}</option>`
+    ).join('') + '</select>';
+  }
+
+  function renderReview() {
+    const table = document.getElementById('reviewTable');
+    const body = document.getElementById('reviewBody');
+    const addBtn = document.getElementById('addParsedBtn');
+    if (!parsedRows.length) { table.style.display = 'none'; addBtn.style.display = 'none'; return; }
+
+    body.innerHTML = parsedRows.map((m, idx) => `
+      <tr>
+        <td><input type="checkbox" data-role="include" data-idx="${idx}" ${m.include ? 'checked' : ''}></td>
+        <td style="font-size:12px;">${m.raw}${m.note ? `<div style="color:var(--warn); font-size:11px;">${m.note}</div>` : ''}</td>
+        <td><select data-role="ingredient" data-idx="${idx}">${ingredientOptions(m)}</select></td>
+        <td>${measureOptions(m).replace('__IDX__', idx)}</td>
+        <td><input type="number" step="0.01" min="0" data-role="qty" data-idx="${idx}" value="${m.qty != null ? m.qty : ''}" style="width:70px;"></td>
+        <td><select data-role="unit" data-idx="${idx}">${unitOptions(m)}</select></td>
+        <td>${supplierCell(m, idx)}</td>
+        <td id="rcost_${idx}">${rowCostText(m)}</td>
+      </tr>
+    `).join('');
+    table.style.display = 'table';
+
+    const n = parsedRows.filter(r => r.include).length;
+    const created = parsedRows.filter(r => r.include && r.ingredientId === '__new__').length;
+    document.getElementById('parseSummary').innerHTML =
+      `${parsedRows.length} line(s) parsed · <strong>${n}</strong> selected` + (created ? ` · <strong>${created}</strong> new ingredient(s) will be created` : '');
+    addBtn.style.display = 'inline-block';
+    addBtn.textContent = n ? `Add ${n} line${n === 1 ? '' : 's'} to recipe` : 'Nothing selected';
+    addBtn.disabled = n === 0;
+  }
+
+  // Delegated events on the review table.
+  document.getElementById('reviewBody').addEventListener('change', (e) => {
+    const el = e.target; const idx = parseInt(el.dataset.idx, 10);
+    if (isNaN(idx)) return;
+    const m = parsedRows[idx];
+    const role = el.dataset.role;
+    if (role === 'include') { m.include = el.checked; renderReview(); return; }
+    if (role === 'ingredient') {
+      m.ingredientId = el.value;
+      if (m.ingredientId !== '__new__') {
+        const ing = ingredientById(m.ingredientId);
+        if (ing) { m.measureType = ing.measureType; if (!unitsForType(m.measureType).includes(m.unit)) m.unit = baseUnitFor(m.measureType); }
+        const cheap = cheapestSupplierFor(m.ingredientId);
+        m.supplierId = cheap ? cheap.id : '';
+      }
+      renderReview(); return;
+    }
+    if (role === 'measure') { m.measureType = el.value; if (!unitsForType(m.measureType).includes(m.unit)) m.unit = baseUnitFor(m.measureType); renderReview(); return; }
+    if (role === 'unit') { m.unit = el.value; document.getElementById('rcost_' + idx).textContent = rowCostText(m); return; }
+    if (role === 'supplier') { m.supplierId = el.value; document.getElementById('rcost_' + idx).textContent = rowCostText(m); return; }
+  });
+  document.getElementById('reviewBody').addEventListener('input', (e) => {
+    if (e.target.dataset.role !== 'qty') return;
+    const idx = parseInt(e.target.dataset.idx, 10);
+    parsedRows[idx].qty = e.target.value === '' ? null : parseFloat(e.target.value);
+    document.getElementById('rcost_' + idx).textContent = rowCostText(parsedRows[idx]);
+  });
+  document.getElementById('reviewBody').addEventListener('click', (e) => {
+    const btn = e.target.closest('button[data-role="link"]');
+    if (btn) openLinkDialog(parseInt(btn.dataset.idx, 10));
+  });
+
+  document.getElementById('openPasteBtn').addEventListener('click', () => {
+    if (!requireAuth() || !currentRecipe) return;
+    document.getElementById('pasteText').value = '';
+    parsedRows = [];
+    document.getElementById('reviewTable').style.display = 'none';
+    document.getElementById('addParsedBtn').style.display = 'none';
+    document.getElementById('parseSummary').textContent = '';
+    setPasteStatus('');
+    pasteDialog.showModal();
+  });
+  document.getElementById('closePasteBtn').addEventListener('click', () => pasteDialog.close());
+
+  document.getElementById('parseBtn').addEventListener('click', () => {
+    const text = document.getElementById('pasteText').value;
+    if (!text.trim()) { setPasteStatus('Paste a recipe first.', 'error'); return; }
+    buildParsed(text);
+    setPasteStatus('');
+    renderReview();
+  });
+
+  document.getElementById('addParsedBtn').addEventListener('click', doAddParsedLines);
+
+  async function doAddParsedLines() {
+    if (!requireAuth() || !currentRecipe) return;
+    const included = parsedRows.filter(r => r.include && r.qty != null && r.unit);
+    if (!included.length) { setPasteStatus('Nothing to add — select rows and set quantities.', 'error'); return; }
+    const cfg = getStoredConfig();
+    document.getElementById('addParsedBtn').disabled = true;
+    setPasteStatus(`Adding ${included.length} line(s)...`);
+    try {
+      // 1) Create any brand-new ingredients first, so lines can reference their IDs.
+      const newRows = included.filter(r => r.ingredientId === '__new__' && r.name);
+      if (newRows.length) {
+        const existingIng = await sheetsGet(cfg.spreadsheetId, ING_RANGE, token);
+        const irows = existingIng.length ? existingIng : [ING_HEADERS];
+        let n = 0;
+        for (let i = 1; i < irows.length; i++) { const c = (irows[i][0] || '').toString(); if (c.startsWith('ING')) { const v = parseInt(c.slice(3), 10); if (!isNaN(v) && v > n) n = v; } }
+        const toAppend = newRows.map(r => {
+          n += 1; const id = 'ING' + String(n).padStart(3, '0');
+          r.ingredientId = id; // mutate so the line below uses the new id
+          ingredients.push({ id, name: r.name, measureType: r.measureType, baseUnit: baseUnitFor(r.measureType) });
+          return [id, r.name, '', r.measureType, baseUnitFor(r.measureType), '', '', '', '', '', ''];
+        });
+        await sheetsAppendRows(cfg.spreadsheetId, ING_RANGE, toAppend, token);
+      }
+
+      // 2) Build and append the RecipeLines.
+      const existingRL = await sheetsGet(cfg.spreadsheetId, RL_RANGE, token);
+      const rlRows = existingRL.length ? existingRL : [RL_HEADERS];
+      let rl = 0;
+      for (let i = 1; i < rlRows.length; i++) { const c = (rlRows[i][0] || '').toString(); if (c.startsWith('RL')) { const v = parseInt(c.slice(2), 10); if (!isNaN(v) && v > rl) rl = v; } }
+      const appendLines = included.map(r => {
+        rl += 1; const id = 'RL' + String(rl).padStart(3, '0');
+        const cpb = supplierCostPerBase(r.supplierId);
+        const lineCost = (cpb != null) ? toBaseAmount(r.measureType, r.qty, r.unit) * cpb : 0;
+        return [id, currentRecipe.id, 'Ingredient', r.ingredientId, r.qty, r.unit, r.supplierId || '', lineCost.toFixed(4)];
+      });
+      await sheetsAppendRows(cfg.spreadsheetId, RL_RANGE, appendLines, token);
+
+      // 3) Recalc + refresh.
+      await Promise.all([loadIngredients(), loadSupplierIngredients()]);
+      await recalcAndSaveRecipeCost(cfg);
+      await refreshCurrentRecipe();
+      refreshComponentOptions();
+      const noPrice = included.filter(r => supplierCostPerBase(r.supplierId) == null).length;
+      pasteDialog.close();
+      setPageStatus(`Added ${appendLines.length} line(s)${noPrice ? ` — ${noPrice} had no supplier price (counted as £0; link a supplier and re-add to cost them)` : ''}.`, noPrice ? '' : 'ok');
+    } catch (err) {
+      setPasteStatus('Error: ' + err.message, 'error');
+      document.getElementById('addParsedBtn').disabled = false;
+    }
+  }
+
+  // ---------- Inline supplier link (from review table) ----------
+  const linkDialog = document.getElementById('linkDialog');
+  let linkIdx = -1;
+
+  function openLinkDialog(idx) {
+    linkIdx = idx;
+    const m = parsedRows[idx];
+    const ing = ingredientById(m.ingredientId);
+    if (!ing) return;
+    document.getElementById('linkTitle').textContent = `Link a supplier to ${ing.name}`;
+    document.getElementById('lk_supplier').innerHTML = suppliers.length
+      ? suppliers.map(s => `<option value="${s.id}">${s.name}</option>`).join('')
+      : '<option value="">No suppliers — add one on the Suppliers page</option>';
+    document.getElementById('lk_packunit').innerHTML = unitsForType(ing.measureType).map(u => `<option value="${u}">${u}</option>`).join('');
+    document.getElementById('linkForm2').reset();
+    document.getElementById('lk_cost').textContent = '—';
+    document.getElementById('lk_status').textContent = '';
+    linkDialog.showModal();
+  }
+  document.getElementById('closeLinkBtn').addEventListener('click', () => linkDialog.close());
+  document.getElementById('lk_cancelBtn').addEventListener('click', () => linkDialog.close());
+
+  function recalcLinkCost() {
+    const m = parsedRows[linkIdx]; const ing = m ? ingredientById(m.ingredientId) : null;
+    const box = document.getElementById('lk_cost');
+    const ps = parseFloat(document.getElementById('lk_packsize').value);
+    const pu = document.getElementById('lk_packunit').value;
+    const pr = parseFloat(document.getElementById('lk_price').value);
+    if (!ing || !ps || !pu || !pr) { box.textContent = '—'; return null; }
+    const base = toBaseAmount(ing.measureType, ps, pu);
+    if (!base) { box.textContent = '—'; return null; }
+    const cpb = pr / base; box.textContent = `${fmtMoney2(cpb)} per ${ing.baseUnit}`; return cpb;
+  }
+  ['lk_packsize', 'lk_packunit', 'lk_price'].forEach(id => document.getElementById(id).addEventListener('input', recalcLinkCost));
+
+  document.getElementById('linkForm2').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const m = parsedRows[linkIdx]; const ing = m ? ingredientById(m.ingredientId) : null;
+    if (!ing) return;
+    const supplierId = document.getElementById('lk_supplier').value;
+    const ps = parseFloat(document.getElementById('lk_packsize').value);
+    const pu = document.getElementById('lk_packunit').value;
+    const pr = parseFloat(document.getElementById('lk_price').value);
+    if (!supplierId || !ps || !pu || !pr) { document.getElementById('lk_status').textContent = 'All fields are required.'; document.getElementById('lk_status').className = 'status-line error'; return; }
+    const cpb = recalcLinkCost();
+    if (cpb == null) { document.getElementById('lk_status').textContent = 'Could not calculate cost.'; document.getElementById('lk_status').className = 'status-line error'; return; }
+    const cfg = getStoredConfig();
+    document.getElementById('lk_status').textContent = 'Saving...'; document.getElementById('lk_status').className = 'status-line';
+    try {
+      const existing = await sheetsGet(cfg.spreadsheetId, SI_RANGE, token);
+      const rows = existing.length ? existing : [SI_HEADERS];
+      const id = nextId(rows, 'SI');
+      await sheetsAppend(cfg.spreadsheetId, SI_RANGE, [id, ing.id, supplierId, ps, pu, pr.toFixed(2), cpb.toFixed(4)], token);
+      await loadSupplierIngredients();
+      m.supplierId = id; // select the price we just created for this row
+      linkDialog.close();
+      renderReview();
+    } catch (err) {
+      document.getElementById('lk_status').textContent = 'Error: ' + err.message; document.getElementById('lk_status').className = 'status-line error';
+    }
   });
 
   window.addEventListener('load', async () => {
     if (requireAuth()) {
-      setNrStatus('Loading...');
-      try {
-        await loadAllLookups();
-        setNrStatus('', '');
-      } catch (err) {
-        setNrStatus('Error loading data: ' + err.message, 'error');
-      }
+      setPageStatus('Loading...');
+      try { await loadAllLookups(); setPageStatus(`Loaded ${recipesAll.length} recipe(s).`, 'ok'); }
+      catch (err) { setPageStatus('Error loading data: ' + err.message, 'error'); }
     }
   });
 </script>
