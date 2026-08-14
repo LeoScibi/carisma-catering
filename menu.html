@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Carisma Ops — Menu Builder</title>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<link rel="stylesheet" href="css/style.css?v=2">
+</head>
+<body>
+
+<header class="app-header">
+  <div class="brand">Carisma <span>Ops</span></div>
+  <nav class="app-nav">
+    <a href="index.html">Dashboard</a>
+    <a href="ingredients.html">Ingredients</a>
+    <a href="suppliers.html">Suppliers</a>
+    <a href="supplier-ingredients.html">Price Lists</a>
+    <a href="recipes.html">Recipes</a>
+    <a href="menu.html" class="active">Menu Builder</a>
+    <a href="import.html">Import</a>
+    <a href="setup.html">Setup</a>
+  </nav>
+</header>
+
+<main>
+  <h1>Menu Builder</h1>
+  <p class="sub">Add recipes and how much of each you need, and get a consolidated shopping list — sub-recipes are expanded down to raw ingredients and quantities are combined across the whole menu. This page only reads your data; nothing is saved to the sheet, so it resets if you leave.</p>
+
+  <div id="signedOutNotice" class="card" style="display:none;">
+    <span class="badge off">Not signed in</span>
+    <p style="font-size:13px; color:var(--muted); margin-bottom:0;">Go to the <a href="index.html">Dashboard</a> to sign in — your session will carry over here.</p>
+  </div>
+
+  <div id="appBody" style="display:none;">
+
+    <div class="card">
+      <h2 style="margin-top:0;">Add a recipe</h2>
+      <div class="field-row">
+        <div>
+          <label style="margin-top:0;">Recipe *</label>
+          <select id="mi_recipe"><option value="">Loading recipes...</option></select>
+        </div>
+        <div>
+          <label style="margin-top:0;">Quantity needed *</label>
+          <div style="display:flex; gap:8px; align-items:center;">
+            <input id="mi_qty" type="number" step="0.01" min="0" style="flex:1;">
+            <span id="mi_unit" style="color:var(--muted); font-size:13px; white-space:nowrap;">—</span>
+          </div>
+        </div>
+      </div>
+      <p class="hint">E.g. if the recipe yields 12 pc and you're serving 60 people, enter 60. If it yields 2 kg and you need 5 kg, enter 5.</p>
+      <button type="button" id="mi_addBtn">Add to menu</button>
+      <div id="mi_status" class="status-line"></div>
+    </div>
+
+    <h2>Menu</h2>
+    <table id="menuTable" style="display:none;">
+      <thead><tr><th>Recipe</th><th>Quantity needed</th><th>Est. cost</th><th></th></tr></thead>
+      <tbody id="menuBody"></tbody>
+    </table>
+    <p class="sub" id="menuEmpty">No recipes on the menu yet — add one above.</p>
+    <button type="button" id="clearMenuBtn" class="secondary" style="display:none;">Clear menu</button>
+
+    <h2>Shopping list</h2>
+    <div id="shoppingWarnings"></div>
+    <div id="shoppingList"></div>
+    <div class="totals" id="shoppingTotals" style="display:none;">
+      <div class="line grand"><span>Estimated total cost</span><span id="sl_totalcost">£0.00</span></div>
+    </div>
+    <button type="button" id="copyListBtn" class="secondary" style="display:none;">Copy list as text</button>
+    <div id="copyStatus" class="status-line"></div>
+  </div>
+</main>
+
+<script src="js/config.js?v=2"></script>
+<script src="js/sheets.js?v=2"></script>
+<script src="js/units.js?v=2"></script>
+<script>
+  const ING_RANGE = 'Ingredients!A:K';
+  const SUP_RANGE = 'Suppliers!A:D';
+  const SI_RANGE = 'SupplierIngredients!A:G';
+  const REC_RANGE = 'Recipes!A:H';
+  const RL_RANGE = 'RecipeLines!A:H';
+
+  let token = null;
+  let ingredients = [];         // {id, name, category, measureType, baseUnit}
+  let suppliers = [];           // {id, name}
+  let supplierIngredients = []; // {id, ingredientId, supplierId, costPerBase}
+  let recipesAll = [];          // {id, name, type, yieldMeasureType, yieldAmount, yieldUnit, costPerBase}
+  let allLines = [];            // every RecipeLines row: {recipeId, componentType, componentId, quantity, unit}
+  let menuItems = [];           // [{recipeId, qty}] — session-only
+
+  const miStatus = document.getElementById('mi_status');
+  const copyStatus = document.getElementById('copyStatus');
+  function setMiStatus(m, k) { miStatus.textContent = m; miStatus.className = 'status-line' + (k ? ' ' + k : ''); }
+  function setCopyStatus(m, k) { copyStatus.textContent = m; copyStatus.className = 'status-line' + (k ? ' ' + k : ''); }
+
+  function requireAuth() {
+    const cfg = getStoredConfig();
+    token = tryResumeSession();
+    if (!token || !cfg.spreadsheetId) {
+      document.getElementById('signedOutNotice').style.display = 'block';
+      document.getElementById('appBody').style.display = 'none';
+      return false;
+    }
+    document.getElementById('signedOutNotice').style.display = 'none';
+    document.getElementById('appBody').style.display = 'block';
+    return true;
+  }
+
+  function ingredientById(id) { return ingredients.find(i => i.id === id) || null; }
+  function recipeById(id) { return recipesAll.find(r => r.id === id) || null; }
+  function supplierName(id) { const s = suppliers.find(x => x.id === id); return s ? s.name : id; }
+  function cheapestSupplierFor(ingredientId) {
+    const opts = supplierIngredients.filter(s => s.ingredientId === ingredientId);
+    if (!opts.length) return null;
+    return opts.reduce((a, b) => (b.costPerBase < a.costPerBase ? b : a));
+  }
+  function linesFor(recipeId) { return allLines.filter(l => l.recipeId === recipeId); }
+
+  // ---------- Load everything ----------
+  async function loadAll() {
+    const cfg = getStoredConfig();
+    const [ingRows, supRows, siRows, recRows, rlRows] = await Promise.all([
+      sheetsGet(cfg.spreadsheetId, ING_RANGE, token),
+      sheetsGet(cfg.spreadsheetId, SUP_RANGE, token),
+      sheetsGet(cfg.spreadsheetId, SI_RANGE, token),
+      sheetsGet(cfg.spreadsheetId, REC_RANGE, token),
+      sheetsGet(cfg.spreadsheetId, RL_RANGE, token)
+    ]);
+    ingredients = (ingRows.slice(1) || []).map(r => ({ id: r[0], name: r[1], category: r[2] || 'Uncategorised', measureType: r[3], baseUnit: r[4] })).filter(i => i.id);
+    suppliers = (supRows.slice(1) || []).map(r => ({ id: r[0], name: r[1] })).filter(s => s.id);
+    supplierIngredients = (siRows.slice(1) || []).map(r => ({ id: r[0], ingredientId: r[1], supplierId: r[2], costPerBase: parseFloat(r[6]) || 0 })).filter(s => s.id);
+    recipesAll = (recRows.slice(1) || []).map(r => ({
+      id: r[0], name: r[1], type: r[2], yieldMeasureType: r[3],
+      yieldAmount: parseFloat(r[4]) || 0, yieldUnit: r[5], costPerBase: parseFloat(r[7]) || 0
+    })).filter(r => r.id);
+    allLines = (rlRows.slice(1) || []).map(r => ({
+      recipeId: r[1], componentType: r[2], componentId: r[3], quantity: parseFloat(r[4]) || 0, unit: r[5]
+    })).filter(l => l.recipeId);
+
+    renderRecipeSelect();
+    // Drop any menu items whose recipe no longer exists, keep the rest.
+    menuItems = menuItems.filter(m => recipeById(m.recipeId));
+    renderMenu();
+  }
+
+  function renderRecipeSelect() {
+    const sel = document.getElementById('mi_recipe');
+    sel.innerHTML = recipesAll.length
+      ? '<option value="">Choose a recipe...</option>' + recipesAll.map(r => `<option value="${r.id}">${r.name} — ${r.type} (yields ${r.yieldAmount} ${r.yieldUnit})</option>`).join('')
+      : '<option value="">No recipes yet — create one on the Recipes page</option>';
+    updateUnitHint();
+  }
+
+  document.getElementById('mi_recipe').addEventListener('change', updateUnitHint);
+  function updateUnitHint() {
+    const rec = recipeById(document.getElementById('mi_recipe').value);
+    document.getElementById('mi_unit').textContent = rec ? rec.yieldUnit : '—';
+  }
+
+  // ---------- Menu ----------
+  document.getElementById('mi_addBtn').addEventListener('click', () => {
+    const recipeId = document.getElementById('mi_recipe').value;
+    const qty = parseFloat(document.getElementById('mi_qty').value);
+    const rec = recipeById(recipeId);
+    if (!rec) { setMiStatus('Choose a recipe.', 'error'); return; }
+    if (!qty || qty <= 0) { setMiStatus('Enter a quantity greater than 0.', 'error'); return; }
+    const existing = menuItems.find(m => m.recipeId === recipeId);
+    if (existing) existing.qty += qty; else menuItems.push({ recipeId, qty });
+    document.getElementById('mi_qty').value = '';
+    setMiStatus(`Added ${rec.name}.`, 'ok');
+    renderMenu();
+  });
+
+  function renderMenu() {
+    const table = document.getElementById('menuTable');
+    const empty = document.getElementById('menuEmpty');
+    const clearBtn = document.getElementById('clearMenuBtn');
+    if (!menuItems.length) {
+      table.style.display = 'none'; empty.style.display = 'block'; clearBtn.style.display = 'none';
+      renderShoppingList();
+      return;
+    }
+    empty.style.display = 'none'; clearBtn.style.display = 'inline-block';
+    document.getElementById('menuBody').innerHTML = menuItems.map((m, idx) => {
+      const rec = recipeById(m.recipeId);
+      const cost = rec ? rec.costPerBase * toBaseAmount(rec.yieldMeasureType, m.qty, rec.yieldUnit) : 0;
+      return `
+        <tr>
+          <td>${rec ? rec.name : m.recipeId}</td>
+          <td>${m.qty} ${rec ? rec.yieldUnit : ''}</td>
+          <td>${fmtMoney2(cost)}</td>
+          <td><button type="button" class="secondary" data-idx="${idx}" style="margin:0; padding:5px 10px;">Remove</button></td>
+        </tr>`;
+    }).join('');
+    table.style.display = 'table';
+    renderShoppingList();
+  }
+
+  document.getElementById('menuBody').addEventListener('click', (e) => {
+    const btn = e.target.closest('button[data-idx]');
+    if (!btn) return;
+    menuItems.splice(parseInt(btn.dataset.idx, 10), 1);
+    renderMenu();
+  });
+
+  document.getElementById('clearMenuBtn').addEventListener('click', () => { menuItems = []; renderMenu(); });
+
+  // ---------- Recursive expansion: menu -> raw ingredient totals (in each ingredient's base unit) ----------
+  function expand(recipeId, neededBaseAmount, visited, totals, warnings) {
+    if (visited.has(recipeId)) {
+      const rec = recipeById(recipeId);
+      warnings.add(`"${rec ? rec.name : recipeId}" is used inside itself (directly or via a sub-recipe) — that branch was skipped to avoid an infinite loop.`);
+      return;
+    }
+    const rec = recipeById(recipeId);
+    if (!rec) { warnings.add(`A recipe line points at a recipe that no longer exists.`); return; }
+    const yieldBase = toBaseAmount(rec.yieldMeasureType, rec.yieldAmount, rec.yieldUnit);
+    if (!yieldBase) { warnings.add(`"${rec.name}" has no yield set, so it can't be scaled — skipped.`); return; }
+    const factor = neededBaseAmount / yieldBase;
+    const nextVisited = new Set(visited); nextVisited.add(recipeId);
+
+    for (const line of linesFor(recipeId)) {
+      if (line.componentType === 'Ingredient') {
+        const ing = ingredientById(line.componentId);
+        if (!ing) { warnings.add(`"${rec.name}" has a line for an ingredient that no longer exists — skipped.`); continue; }
+        const lineBase = toBaseAmount(ing.measureType, line.quantity, line.unit);
+        totals[ing.id] = (totals[ing.id] || 0) + lineBase * factor;
+      } else {
+        const subBase = (() => {
+          const sub = recipeById(line.componentId);
+          return sub ? toBaseAmount(sub.yieldMeasureType, line.quantity, line.unit) : 0;
+        })();
+        expand(line.componentId, subBase * factor, nextVisited, totals, warnings);
+      }
+    }
+  }
+
+  function buildShoppingTotals() {
+    const totals = {}; // ingredientId -> base amount
+    const warnings = new Set();
+    for (const m of menuItems) {
+      const rec = recipeById(m.recipeId);
+      if (!rec) continue;
+      const yieldBase = toBaseAmount(rec.yieldMeasureType, rec.yieldAmount, rec.yieldUnit);
+      if (!yieldBase) { warnings.add(`"${rec.name}" has no yield set, so it can't be scaled — skipped.`); continue; }
+      const neededBase = toBaseAmount(rec.yieldMeasureType, m.qty, rec.yieldUnit);
+      expand(m.recipeId, neededBase, new Set(), totals, warnings);
+    }
+    return { totals, warnings };
+  }
+
+  function renderShoppingList() {
+    const listBox = document.getElementById('shoppingList');
+    const warnBox = document.getElementById('shoppingWarnings');
+    const totalsBox = document.getElementById('shoppingTotals');
+    const copyBtn = document.getElementById('copyListBtn');
+    setCopyStatus('');
+
+    if (!menuItems.length) {
+      listBox.innerHTML = ''; warnBox.innerHTML = ''; totalsBox.style.display = 'none'; copyBtn.style.display = 'none';
+      return;
+    }
+
+    const { totals, warnings } = buildShoppingTotals();
+    const ids = Object.keys(totals).filter(id => totals[id] > 0.0005);
+
+    warnBox.innerHTML = warnings.size
+      ? `<p class="status-line error">${[...warnings].join('<br>')}</p>` : '';
+
+    if (!ids.length) {
+      listBox.innerHTML = '<p class="sub">Nothing to show yet — the recipes on your menu have no ingredient lines.</p>';
+      totalsBox.style.display = 'none'; copyBtn.style.display = 'none';
+      return;
+    }
+
+    // Group by category.
+    const byCategory = {};
+    ids.forEach(id => {
+      const ing = ingredientById(id);
+      const cat = ing ? ing.category : 'Unknown';
+      (byCategory[cat] = byCategory[cat] || []).push(id);
+    });
+    const categories = Object.keys(byCategory).sort((a, b) => a.localeCompare(b));
+
+    let grandTotal = 0, noPriceCount = 0;
+    listBox.innerHTML = categories.map(cat => {
+      const rows = byCategory[cat].slice().sort((a, b) => (ingredientById(a) || {}).name.localeCompare((ingredientById(b) || {}).name));
+      const bodyRows = rows.map(id => {
+        const ing = ingredientById(id);
+        const amount = totals[id];
+        const cheap = cheapestSupplierFor(id);
+        const cost = cheap ? cheap.costPerBase * amount : null;
+        if (cost != null) grandTotal += cost; else noPriceCount++;
+        return `
+          <tr>
+            <td>${ing ? ing.name : id}</td>
+            <td>${amount.toFixed(2)} ${ing ? ing.baseUnit : ''}</td>
+            <td>${cost != null ? fmtMoney2(cost) : '<span style="color:var(--warn);">no price</span>'}</td>
+            <td style="color:var(--muted); font-size:12px;">${cheap ? supplierName(cheap.supplierId) : '—'}</td>
+          </tr>`;
+      }).join('');
+      return `
+        <div class="card">
+          <h3 style="margin-top:0;">${cat}</h3>
+          <table>
+            <thead><tr><th>Ingredient</th><th>Total needed</th><th>Est. cost</th><th>Cheapest supplier</th></tr></thead>
+            <tbody>${bodyRows}</tbody>
+          </table>
+        </div>`;
+    }).join('');
+
+    document.getElementById('sl_totalcost').textContent = fmtMoney2(grandTotal);
+    totalsBox.style.display = 'block';
+    copyBtn.style.display = 'inline-block';
+    if (noPriceCount) warnBox.innerHTML += `<p class="status-line">${noPriceCount} item(s) have no supplier price yet, so they're excluded from the total — link a price on Price Lists or an ingredient's card.</p>`;
+  }
+
+  document.getElementById('copyListBtn').addEventListener('click', async () => {
+    const { totals } = buildShoppingTotals();
+    const ids = Object.keys(totals).filter(id => totals[id] > 0.0005);
+    const byCategory = {};
+    ids.forEach(id => { const ing = ingredientById(id); const cat = ing ? ing.category : 'Unknown'; (byCategory[cat] = byCategory[cat] || []).push(id); });
+    const categories = Object.keys(byCategory).sort((a, b) => a.localeCompare(b));
+    let text = 'Shopping list\n';
+    categories.forEach(cat => {
+      text += `\n${cat}\n`;
+      byCategory[cat].sort((a, b) => (ingredientById(a) || {}).name.localeCompare((ingredientById(b) || {}).name)).forEach(id => {
+        const ing = ingredientById(id);
+        text += `- ${ing ? ing.name : id}: ${totals[id].toFixed(2)} ${ing ? ing.baseUnit : ''}\n`;
+      });
+    });
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopyStatus('Copied to clipboard.', 'ok');
+    } catch (err) {
+      setCopyStatus('Could not copy automatically — select and copy the list manually.', 'error');
+    }
+  });
+
+  window.addEventListener('load', async () => {
+    if (requireAuth()) {
+      setMiStatus('Loading...');
+      try { await loadAll(); setMiStatus('', ''); }
+      catch (err) { setMiStatus('Error loading data: ' + err.message, 'error'); }
+    }
+  });
+</script>
+</body>
+</html>
