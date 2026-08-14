@@ -65,7 +65,30 @@
         </div>
 
       <div class="dialog-section">
-        <h3 style="margin-top:0;">Add a single line</h3>
+        <h3 style="margin-top:0;">Scale this recipe</h3>
+        <div class="field-row">
+          <div>
+            <label style="margin-top:0;">Scale to yield</label>
+            <input id="sc_target" type="number" step="0.01" min="0">
+          </div>
+          <div>
+            <label style="margin-top:0;">Unit</label>
+            <input id="sc_unit" disabled>
+          </div>
+        </div>
+        <p class="hint" id="sc_factor"></p>
+        <table id="scaleTable" style="display:none;">
+          <thead><tr><th>Component</th><th>Scaled quantity</th><th>Scaled line cost</th></tr></thead>
+          <tbody id="scaleBody"></tbody>
+        </table>
+        <p class="sub" id="scaleNone" style="display:none;">Add recipe lines first to see them scaled.</p>
+        <div class="totals" id="scaleTotals" style="display:none;">
+          <div class="line grand"><span>Scaled total cost</span><span id="sc_totalcost">£0.00</span></div>
+        </div>
+      </div>
+
+      <div class="dialog-section">
+        <h3>Add a single line</h3>
         <form id="lineForm">
           <div class="field-row">
             <div>
@@ -381,7 +404,53 @@
     document.getElementById('rd_yield').textContent = `Yields ${currentRecipe.yieldAmount} ${currentRecipe.yieldUnit}`;
     document.getElementById('rd_totalcost').textContent = fmtMoney2(currentRecipe.totalCost);
     document.getElementById('rd_costperbase').textContent = `${fmtMoney2(currentRecipe.costPerBase)} per ${baseUnitFor(currentRecipe.yieldMeasureType)}`;
+    document.getElementById('sc_target').value = currentRecipe.yieldAmount;
+    document.getElementById('sc_unit').value = currentRecipe.yieldUnit;
+    renderScale();
   }
+
+  // ---------- Scale this recipe (view-only — nothing is written to the sheet) ----------
+  function fmtQty(n) { return isFinite(n) ? +n.toFixed(2) : 0; }
+
+  function renderScale() {
+    if (!currentRecipe) return;
+    const table = document.getElementById('scaleTable');
+    const body = document.getElementById('scaleBody');
+    const none = document.getElementById('scaleNone');
+    const totalsBox = document.getElementById('scaleTotals');
+    const factorNote = document.getElementById('sc_factor');
+    const target = parseFloat(document.getElementById('sc_target').value);
+
+    if (!currentLines.length) {
+      table.style.display = 'none'; totalsBox.style.display = 'none'; none.style.display = 'block';
+      factorNote.textContent = '';
+      return;
+    }
+    none.style.display = 'none';
+
+    if (!target || !currentRecipe.yieldAmount) {
+      table.style.display = 'none'; totalsBox.style.display = 'none';
+      factorNote.textContent = 'Enter a target yield above to scale.';
+      return;
+    }
+
+    const factor = target / currentRecipe.yieldAmount;
+    factorNote.textContent = `${currentRecipe.yieldAmount} ${currentRecipe.yieldUnit} → ${target} ${currentRecipe.yieldUnit} = ×${fmtQty(factor)}`;
+
+    body.innerHTML = currentLines.map(l => `
+      <tr>
+        <td>${componentDisplayName(l.componentType, l.componentId)}</td>
+        <td>${fmtQty(l.quantity * factor)} ${l.unit}</td>
+        <td>${fmtMoney2(l.lineCost * factor)}</td>
+      </tr>
+    `).join('');
+    table.style.display = 'table';
+
+    const scaledTotal = currentLines.reduce((sum, l) => sum + l.lineCost * factor, 0);
+    document.getElementById('sc_totalcost').textContent = fmtMoney2(scaledTotal);
+    totalsBox.style.display = 'block';
+  }
+  document.getElementById('sc_target').addEventListener('input', renderScale);
 
   // ---------- Manual single-line builder ----------
   document.getElementById('ln_componenttype').addEventListener('change', refreshComponentOptions);
@@ -504,6 +573,7 @@
       quantity: parseFloat(r[4]) || 0, unit: r[5], supplierId: r[6] || '', lineCost: parseFloat(r[7]) || 0
     })).filter(l => l.id && l.recipeId === currentRecipe.id);
     renderLinesTable();
+    renderScale();
   }
 
   function componentDisplayName(type, id) {
