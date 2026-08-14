@@ -208,3 +208,14 @@ dialog::backdrop { background: rgba(28, 28, 28, 0.38); }
 }
 .dialog-close:hover { background: white; border-color: var(--accent); color: var(--accent); }
 .dialog-body { padding: 6px 20px 20px; }
+
+/* A titled sub-section inside a dialog (e.g. the supplier-linking block) */
+.dialog-section { border-top: 1px solid var(--line); margin-top: 20px; padding-top: 4px; }
+.dialog-section h3 { font-size: 14px; margin: 12px 0 4px; }
+
+/* Three-across field row (pack size / unit / price) */
+.field-row.three { grid-template-columns: 1fr 1fr 1fr; }
+@media (max-width: 620px) { .field-row.three { grid-template-columns: 1fr; } }
+
+/* Rows that open a detail view on click */
+table.clickable tbody tr { cursor: pointer; }

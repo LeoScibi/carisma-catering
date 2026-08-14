@@ -37,7 +37,8 @@
 
   <h2>All ingredients</h2>
   <div id="pageStatus" class="status-line"></div>
-  <table id="rowsTable" style="display:none;">
+  <p class="sub" id="listHint" style="display:none;">Click any ingredient to view details, edit it, or link a supplier.</p>
+  <table id="rowsTable" class="clickable" style="display:none;">
     <thead><tr id="tableHead"></tr></thead>
     <tbody id="tableBody"></tbody>
   </table>
@@ -83,6 +84,73 @@
       <div id="status" class="status-line"></div>
     </div>
   </dialog>
+
+  <dialog id="detailDialog">
+    <div class="dialog-head">
+      <h2 id="detailTitle">Ingredient details</h2>
+      <button type="button" class="dialog-close" id="closeDetailBtn" aria-label="Close">&times;</button>
+    </div>
+    <div class="dialog-body">
+      <form id="editForm">
+        <div class="field-row">
+          <div><label style="margin-top:0;">Name *</label><input id="e_name" required></div>
+          <div>
+            <label style="margin-top:0;">Category</label>
+            <input id="e_category" list="categoryOptions" placeholder="Choose or type a new one" autocomplete="off">
+          </div>
+        </div>
+        <div class="field-row">
+          <div>
+            <label>Measure type *</label>
+            <select id="e_measuretype" required>
+              <option value="Weight">Weight</option>
+              <option value="Volume">Volume</option>
+              <option value="Unit">Unit</option>
+            </select>
+          </div>
+          <div>
+            <label>Base unit</label>
+            <input id="e_baseunit" disabled placeholder="Set automatically">
+          </div>
+        </div>
+        <div class="field-row">
+          <div><label>Storage</label><input id="e_storage" placeholder="e.g. Chilled, Ambient, Frozen"></div>
+          <div><label>Shelf life</label><input id="e_shelflife"></div>
+        </div>
+        <button type="submit" id="saveBtn">Save changes</button>
+      </form>
+      <div id="editStatus" class="status-line"></div>
+
+      <div class="dialog-section">
+        <h3>Linked suppliers</h3>
+        <table id="linksTable" style="display:none;">
+          <thead><tr><th>Supplier</th><th>Pack</th><th>Price</th><th>Cost / base unit</th></tr></thead>
+          <tbody id="linksBody"></tbody>
+        </table>
+        <p class="sub" id="noLinks" style="display:none;">No suppliers linked yet.</p>
+
+        <form id="linkForm">
+          <div class="field-row">
+            <div>
+              <label>Supplier *</label>
+              <select id="l_supplier" required><option value="">Loading suppliers...</option></select>
+            </div>
+            <div></div>
+          </div>
+          <div class="field-row three">
+            <div><label>Pack size *</label><input id="l_packsize" type="number" step="0.01" min="0" required></div>
+            <div><label>Pack unit *</label><select id="l_packunit" required></select></div>
+            <div><label>Price (£) *</label><input id="l_price" type="number" step="0.01" min="0" required></div>
+          </div>
+          <div class="totals">
+            <div class="line"><span>Cost per base unit</span><span id="l_costperbase">—</span></div>
+          </div>
+          <button type="submit" id="linkBtn">Link supplier</button>
+        </form>
+        <div id="linkStatus" class="status-line"></div>
+      </div>
+    </div>
+  </dialog>
 </main>
 
 <script src="js/config.js"></script>
@@ -91,11 +159,29 @@
 <script>
   const RANGE = 'Ingredients!A:H';
   const HEADERS = ['ID','NAME','CATEGORY','MEASURE TYPE','BASE UNIT','DESCRIPTION','STORAGE','SHELF LIFE'];
+  const SI_RANGE = 'SupplierIngredients!A:G';
+  const SI_HEADERS = ['ID','INGREDIENT ID','SUPPLIER ID','PACK SIZE','PACK UNIT','PRICE','COST PER BASE UNIT'];
+  const SUP_RANGE = 'Suppliers!A:D';
 
   const status = document.getElementById('status');
   const pageStatus = document.getElementById('pageStatus');
+  const editStatus = document.getElementById('editStatus');
+  const linkStatus = document.getElementById('linkStatus');
   let token = null;
   let cachedRows = [HEADERS];
+  let suppliers = [];        // {id, name}
+  let siRows = [SI_HEADERS]; // all SupplierIngredients rows
+  let currentEdit = null;    // { idx, id } of the ingredient open in the detail dialog
+
+  function setEditStatus(msg, kind) {
+    editStatus.textContent = msg;
+    editStatus.className = 'status-line' + (kind ? ' ' + kind : '');
+  }
+  function setLinkStatus(msg, kind) {
+    linkStatus.textContent = msg;
+    linkStatus.className = 'status-line' + (kind ? ' ' + kind : '');
+  }
+  function supplierName(id) { const s = suppliers.find(x => x.id === id); return s ? s.name : id; }
 
   // Status inside the Add dialog (in-progress / validation / add errors).
   function setStatus(msg, kind) {
@@ -178,14 +264,27 @@
     const table = document.getElementById('rowsTable');
     const head = document.getElementById('tableHead');
     const body = document.getElementById('tableBody');
-    if (!rows.length || rows.length < 2) { table.style.display = 'none'; return; }
+    const hint = document.getElementById('listHint');
+    if (!rows.length || rows.length < 2) {
+      table.style.display = 'none';
+      hint.style.display = 'none';
+      return;
+    }
     const [header, ...rest] = rows;
     head.innerHTML = header.map(h => `<th>${h}</th>`).join('');
-    body.innerHTML = rest.map(r =>
-      '<tr>' + header.map((_, i) => `<td>${r[i] ?? ''}</td>`).join('') + '</tr>'
+    body.innerHTML = rest.map((r, j) =>
+      // data-idx is the row's index in cachedRows (j+1, since header is index 0)
+      `<tr data-idx="${j + 1}">` + header.map((_, i) => `<td>${r[i] ?? ''}</td>`).join('') + '</tr>'
     ).join('');
     table.style.display = 'table';
+    hint.style.display = 'block';
   }
+
+  // Row click -> open the detail/edit dialog for that ingredient.
+  document.getElementById('tableBody').addEventListener('click', (e) => {
+    const tr = e.target.closest('tr[data-idx]');
+    if (tr) openDetail(parseInt(tr.dataset.idx, 10));
+  });
 
   document.getElementById('addForm').addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -226,10 +325,199 @@
     }
   });
 
-  document.getElementById('reloadBtn').addEventListener('click', loadRows);
+  // ---------- Detail / edit dialog ----------
+  const detailDialog = document.getElementById('detailDialog');
+
+  // Reads the measure type currently selected in the edit form (edits may be unsaved).
+  function editMeasureType() { return document.getElementById('e_measuretype').value; }
+
+  // Loads the supplier list + all SupplierIngredients links used by the detail card.
+  async function loadSuppliersAndLinks() {
+    const cfg = getStoredConfig();
+    const [supRows, links] = await Promise.all([
+      sheetsGet(cfg.spreadsheetId, SUP_RANGE, token),
+      sheetsGet(cfg.spreadsheetId, SI_RANGE, token)
+    ]);
+    suppliers = (supRows.slice(1) || []).map(r => ({ id: r[0], name: r[1] })).filter(s => s.id);
+    siRows = links.length ? links : [SI_HEADERS];
+    const sel = document.getElementById('l_supplier');
+    sel.innerHTML = suppliers.length
+      ? suppliers.map(s => `<option value="${s.id}">${s.name}</option>`).join('')
+      : '<option value="">No suppliers yet — add one on the Suppliers page</option>';
+  }
+
+  function refreshLinkPackUnits() {
+    const sel = document.getElementById('l_packunit');
+    sel.innerHTML = unitsForType(editMeasureType()).map(u => `<option value="${u}">${u}</option>`).join('');
+    recalcLink();
+  }
+
+  function recalcLink() {
+    const box = document.getElementById('l_costperbase');
+    const packSize = parseFloat(document.getElementById('l_packsize').value);
+    const packUnit = document.getElementById('l_packunit').value;
+    const price = parseFloat(document.getElementById('l_price').value);
+    const mt = editMeasureType();
+    if (!mt || !packSize || !packUnit || !price) { box.textContent = '—'; return null; }
+    const baseAmount = toBaseAmount(mt, packSize, packUnit);
+    if (!baseAmount) { box.textContent = '—'; return null; }
+    const costPerBase = price / baseAmount;
+    box.textContent = `${fmtMoney2(costPerBase)} per ${baseUnitFor(mt)}`;
+    return costPerBase;
+  }
+
+  // Renders the suppliers already linked to the given ingredient id.
+  function renderLinks(ingId) {
+    const table = document.getElementById('linksTable');
+    const body = document.getElementById('linksBody');
+    const none = document.getElementById('noLinks');
+    const mine = siRows.slice(1).filter(r => r[1] === ingId);
+    if (!mine.length) {
+      table.style.display = 'none';
+      none.style.display = 'block';
+      body.innerHTML = '';
+      return;
+    }
+    const base = baseUnitFor(editMeasureType());
+    body.innerHTML = mine.map(r => `
+      <tr>
+        <td>${supplierName(r[2])}</td>
+        <td>${r[3] ?? ''} ${r[4] ?? ''}</td>
+        <td>${fmtMoney2(parseFloat(r[5]) || 0)}</td>
+        <td>${fmtMoney2(parseFloat(r[6]) || 0)} / ${base}</td>
+      </tr>
+    `).join('');
+    table.style.display = 'table';
+    none.style.display = 'none';
+  }
+
+  async function openDetail(idx) {
+    if (!requireAuth()) return;
+    const r = cachedRows[idx];
+    if (!r) return;
+    currentEdit = { idx, id: r[0] };
+
+    document.getElementById('detailTitle').textContent = `${r[0]} · ${r[1] || 'Ingredient'}`;
+    populateCategories(cachedRows);
+    document.getElementById('e_name').value = r[1] || '';
+    document.getElementById('e_category').value = r[2] || '';
+    document.getElementById('e_measuretype').value = r[3] || 'Weight';
+    document.getElementById('e_baseunit').value = baseUnitFor(editMeasureType());
+    document.getElementById('e_storage').value = r[6] || '';
+    document.getElementById('e_shelflife').value = r[7] || '';
+    setEditStatus('');
+    setLinkStatus('');
+    document.getElementById('linkForm').reset();
+    refreshLinkPackUnits();
+    renderLinks(r[0]); // render from whatever links we already have, then refresh below
+    detailDialog.showModal();
+
+    setLinkStatus('Loading suppliers...');
+    try {
+      await loadSuppliersAndLinks();
+      refreshLinkPackUnits();
+      renderLinks(r[0]);
+      setLinkStatus('');
+    } catch (err) {
+      setLinkStatus('Could not load suppliers: ' + err.message, 'error');
+    }
+  }
+
+  function closeDetail() {
+    detailDialog.close();
+    currentEdit = null;
+  }
+  document.getElementById('closeDetailBtn').addEventListener('click', closeDetail);
+
+  document.getElementById('e_measuretype').addEventListener('change', () => {
+    document.getElementById('e_baseunit').value = baseUnitFor(editMeasureType());
+    refreshLinkPackUnits();
+    if (currentEdit) renderLinks(currentEdit.id);
+  });
+
+  ['l_packsize', 'l_packunit', 'l_price'].forEach(id =>
+    document.getElementById(id).addEventListener('input', recalcLink)
+  );
+
+  // Save the edited ingredient back to its own row.
+  document.getElementById('editForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (!requireAuth() || !currentEdit) return;
+
+    const name = document.getElementById('e_name').value.trim();
+    const measureType = editMeasureType();
+    if (!name) { setEditStatus('Name is required.', 'error'); return; }
+    if (!measureType) { setEditStatus('Measure type is required.', 'error'); return; }
+
+    const cfg = getStoredConfig();
+    const sheetRow = currentEdit.idx + 1; // cachedRows index -> 1-based sheet row
+    const original = cachedRows[currentEdit.idx] || [];
+    const row = [
+      currentEdit.id,
+      name,
+      document.getElementById('e_category').value.trim(),
+      measureType,
+      baseUnitFor(measureType),
+      original[5] || '', // preserve the existing DESCRIPTION cell
+      document.getElementById('e_storage').value.trim(),
+      document.getElementById('e_shelflife').value.trim()
+    ];
+
+    setEditStatus('Saving...');
+    try {
+      await sheetsUpdateRange(cfg.spreadsheetId, `Ingredients!A${sheetRow}:H${sheetRow}`, [row], token, 'USER_ENTERED');
+      document.getElementById('detailTitle').textContent = `${currentEdit.id} · ${name}`;
+      setEditStatus('Saved.', 'ok');
+      await loadRows();
+    } catch (err) {
+      setEditStatus('Error saving: ' + err.message, 'error');
+    }
+  });
+
+  // Link the ingredient to an existing supplier (append to SupplierIngredients).
+  document.getElementById('linkForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (!requireAuth() || !currentEdit) return;
+
+    const supplierId = document.getElementById('l_supplier').value;
+    const packSize = parseFloat(document.getElementById('l_packsize').value);
+    const packUnit = document.getElementById('l_packunit').value;
+    const price = parseFloat(document.getElementById('l_price').value);
+    if (!supplierId || !packSize || !packUnit || !price) {
+      setLinkStatus('All supplier fields are required.', 'error'); return;
+    }
+    const costPerBase = recalcLink();
+    if (costPerBase === null) { setLinkStatus('Could not calculate cost — check the values.', 'error'); return; }
+
+    const cfg = getStoredConfig();
+    setLinkStatus('Linking supplier...');
+    try {
+      const existing = await sheetsGet(cfg.spreadsheetId, SI_RANGE, token);
+      const rows = existing.length ? existing : [SI_HEADERS];
+      const id = nextId(rows, 'SI');
+      const row = [id, currentEdit.id, supplierId, packSize, packUnit, price.toFixed(2), costPerBase.toFixed(4)];
+      await sheetsAppend(cfg.spreadsheetId, SI_RANGE, row, token);
+      siRows = [...rows, row];
+      document.getElementById('linkForm').reset();
+      document.getElementById('l_costperbase').textContent = '—';
+      refreshLinkPackUnits();
+      renderLinks(currentEdit.id);
+      setLinkStatus(`Linked to ${supplierName(supplierId)}.`, 'ok');
+    } catch (err) {
+      setLinkStatus('Error: ' + err.message, 'error');
+    }
+  });
+
+  async function reloadAll() {
+    await loadRows();
+    try { await loadSuppliersAndLinks(); }
+    catch (err) { console.warn('Could not load suppliers/links:', err); }
+  }
+
+  document.getElementById('reloadBtn').addEventListener('click', reloadAll);
 
   window.addEventListener('load', () => {
-    if (requireAuth()) loadRows();
+    if (requireAuth()) reloadAll();
   });
 </script>
 </body>
