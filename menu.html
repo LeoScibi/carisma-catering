@@ -189,7 +189,7 @@
       const cost = rec ? rec.costPerBase * toBaseAmount(rec.yieldMeasureType, m.qty, rec.yieldUnit) : 0;
       return `
         <tr>
-          <td>${rec ? rec.name : m.recipeId}</td>
+          <td>${rec ? `<a href="recipes.html?open=${encodeURIComponent(rec.id)}" target="_blank">${rec.name}</a>` : m.recipeId}</td>
           <td>${m.qty} ${rec ? rec.yieldUnit : ''}</td>
           <td>${fmtMoney2(cost)}</td>
           <td><button type="button" class="secondary" data-idx="${idx}" style="margin:0; padding:5px 10px;">Remove</button></td>
@@ -296,7 +296,7 @@
         if (cost != null) grandTotal += cost; else noPriceCount++;
         return `
           <tr>
-            <td>${ing ? ing.name : id}</td>
+            <td>${ing ? `<a href="ingredients.html?open=${encodeURIComponent(id)}" target="_blank">${ing.name}</a>` : id}</td>
             <td>${amount.toFixed(2)} ${ing ? ing.baseUnit : ''}</td>
             <td>${cost != null ? fmtMoney2(cost) : '<span style="color:var(--warn);">no price</span>'}</td>
             <td style="color:var(--muted); font-size:12px;">${cheap ? supplierName(cheap.supplierId) : '—'}</td>

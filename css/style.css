@@ -134,6 +134,8 @@ button.secondary {
 }
 button.secondary:hover { border-color: var(--accent); color: var(--accent); }
 button:disabled { opacity: 0.4; cursor: not-allowed; }
+button.danger { color: #a33; border-color: #a33; }
+button.danger:hover { background: #a33; color: white; }
 
 #status, .status-line { margin-top: 12px; font-size: 13px; color: var(--muted); }
 .status-line.error { color: #a33; }

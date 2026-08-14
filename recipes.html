@@ -63,6 +63,7 @@
         </div>
         <div class="toolbar">
           <button type="button" id="openPasteBtn" class="add-btn"><span class="plus">+</span> Paste recipe text</button>
+          <button type="button" id="deleteRecipeBtn" class="secondary danger">Delete recipe</button>
         </div>
 
       <div class="dialog-section">
@@ -349,7 +350,7 @@
     if (!currentRecipe) return;
     renderRecipeDetail();
     refreshComponentOptions();
-    recipeDialog.showModal();
+    if (!recipeDialog.open) recipeDialog.showModal();
     loadLines();
   }
 
@@ -441,7 +442,7 @@
 
     body.innerHTML = currentLines.map(l => `
       <tr>
-        <td>${componentDisplayName(l.componentType, l.componentId)}</td>
+        <td>${componentLink(l.componentType, l.componentId)}</td>
         <td>${fmtQty(l.quantity * factor)} ${l.unit}</td>
         <td>${fmtMoney2(l.lineCost * factor)}</td>
       </tr>
@@ -583,6 +584,20 @@
     return (recipesAll.find(r => r.id === id) || {}).name || id;
   }
 
+  // Clickable component name: ingredients open their detail card on the Ingredients
+  // page (new tab, so this recipe stays open); sub-recipes open in-page via openRecipe().
+  function componentLink(type, id) {
+    const name = componentDisplayName(type, id);
+    if (type === 'Ingredient') return `<a href="ingredients.html?open=${encodeURIComponent(id)}" target="_blank">${name}</a>`;
+    return `<a href="#" data-role="open-recipe" data-id="${id}">${name}</a>`;
+  }
+  function bindComponentLinks(container) {
+    container.addEventListener('click', (e) => {
+      const a = e.target.closest('a[data-role="open-recipe"]');
+      if (a) { e.preventDefault(); openRecipe(a.dataset.id); }
+    });
+  }
+
   function renderLinesTable() {
     const table = document.getElementById('linesTable');
     const body = document.getElementById('linesBody');
@@ -591,7 +606,7 @@
     none.style.display = 'none';
     body.innerHTML = currentLines.map(l => `
       <tr>
-        <td>${componentDisplayName(l.componentType, l.componentId)}</td>
+        <td>${componentLink(l.componentType, l.componentId)}</td>
         <td>${l.componentType}</td>
         <td>${l.quantity} ${l.unit}</td>
         <td>${l.supplierId ? supplierName(l.supplierId) : '—'}</td>
@@ -600,6 +615,8 @@
     `).join('');
     table.style.display = 'table';
   }
+  bindComponentLinks(document.getElementById('linesBody'));
+  bindComponentLinks(document.getElementById('scaleBody'));
 
   // Sums RecipeLines for currentRecipe and writes Total + Cost per base back to the Recipes row.
   async function recalcAndSaveRecipeCost(cfg) {
@@ -621,6 +638,62 @@
     if (currentRecipe) { renderRecipeDetail(); await loadLines(); }
     else { recipeDialog.close(); }
   }
+
+  // Delete the recipe: blocked if it's used as a sub-recipe inside another recipe
+  // (that would corrupt that recipe's cost); otherwise cascades to remove this
+  // recipe's own RecipeLines rows along with its own Recipes row, in one batch.
+  document.getElementById('deleteRecipeBtn').addEventListener('click', async () => {
+    if (!requireAuth() || !currentRecipe) return;
+    const cfg = getStoredConfig();
+    setLnStatus('Checking where this recipe is used...');
+    let rlAll;
+    try {
+      rlAll = await sheetsGet(cfg.spreadsheetId, RL_RANGE, token);
+    } catch (err) {
+      setLnStatus('Error checking usage: ' + err.message, 'error');
+      return;
+    }
+    const usedElsewhere = rlAll.slice(1).filter(r => r[2] === 'Recipe' && r[3] === currentRecipe.id).length;
+    if (usedElsewhere) {
+      setLnStatus(`Can't delete — used as a sub-recipe in ${usedElsewhere} recipe line(s). Remove those lines first, then try again.`, 'error');
+      return;
+    }
+    const ownLineCount = rlAll.slice(1).filter(r => r[1] === currentRecipe.id).length;
+    const msg = ownLineCount
+      ? `Delete "${currentRecipe.name}" and its ${ownLineCount} line(s)? This can't be undone.`
+      : `Delete "${currentRecipe.name}"? This can't be undone.`;
+    if (!confirm(msg)) { setLnStatus(''); return; }
+
+    setLnStatus('Deleting...');
+    try {
+      const tabs = await sheetsGetTabs(cfg.spreadsheetId, token);
+      const recSheetId = (tabs.find(t => t.title === 'Recipes') || {}).sheetId;
+      const rlSheetId = (tabs.find(t => t.title === 'RecipeLines') || {}).sheetId;
+      if (recSheetId == null || rlSheetId == null) throw new Error('Could not find the Recipes or RecipeLines tab.');
+
+      // Own RecipeLines rows, highest row index first so earlier deletions in
+      // this same batch don't shift the position of ones still pending.
+      const ownLineIndices = [];
+      rlAll.forEach((r, i) => { if (i > 0 && r[1] === currentRecipe.id) ownLineIndices.push(i); });
+      ownLineIndices.sort((a, b) => b - a);
+      const requests = ownLineIndices.map(idx => ({
+        deleteDimension: { range: { sheetId: rlSheetId, dimension: 'ROWS', startIndex: idx, endIndex: idx + 1 } }
+      }));
+
+      const recRows = await sheetsGet(cfg.spreadsheetId, REC_RANGE, token);
+      const recIdx = recRows.findIndex((r, i) => i > 0 && r[0] === currentRecipe.id);
+      if (recIdx === -1) throw new Error('Could not find this recipe\'s row.');
+      requests.push({ deleteDimension: { range: { sheetId: recSheetId, dimension: 'ROWS', startIndex: recIdx, endIndex: recIdx + 1 } } });
+
+      await sheetsBatchUpdate(cfg.spreadsheetId, requests, token);
+      recipeDialog.close();
+      currentRecipe = null;
+      await loadRecipesOnly();
+      setPageStatus('Recipe deleted.', 'ok');
+    } catch (err) {
+      setLnStatus('Error deleting: ' + err.message, 'error');
+    }
+  });
 
   document.getElementById('reloadAllBtn').addEventListener('click', async () => {
     if (!requireAuth()) return;
@@ -1045,8 +1118,15 @@
   window.addEventListener('load', async () => {
     if (requireAuth()) {
       setPageStatus('Loading...');
-      try { await loadAllLookups(); setPageStatus(`Loaded ${recipesAll.length} recipe(s).`, 'ok'); }
-      catch (err) { setPageStatus('Error loading data: ' + err.message, 'error'); }
+      try {
+        await loadAllLookups();
+        setPageStatus(`Loaded ${recipesAll.length} recipe(s).`, 'ok');
+        // Support "recipes.html?open=REC007" so other pages can link straight in.
+        const openId = new URLSearchParams(location.search).get('open');
+        if (openId && recipesAll.some(r => r.id === openId)) openRecipe(openId);
+      } catch (err) {
+        setPageStatus('Error loading data: ' + err.message, 'error');
+      }
     }
   });
 </script>

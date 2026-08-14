@@ -132,6 +132,7 @@
           <label><input type="checkbox" id="e_glutenfree"> Gluten-free</label>
         </div>
         <button type="submit" id="saveBtn">Save changes</button>
+        <button type="button" id="deleteIngBtn" class="secondary danger">Delete ingredient</button>
       </form>
       <div id="editStatus" class="status-line"></div>
 
@@ -426,7 +427,7 @@
     if (!requireAuth()) return;
     const r = cachedRows[idx];
     if (!r) return;
-    currentEdit = { idx, id: r[0] };
+    currentEdit = { idx, id: r[0], name: r[1] || r[0] };
 
     document.getElementById('detailTitle').textContent = `${r[0]} · ${r[1] || 'Ingredient'}`;
     populateCategories(cachedRows);
@@ -511,6 +512,48 @@
     }
   });
 
+  // Delete the ingredient's own row — blocked if it's still referenced anywhere,
+  // so we never silently corrupt a supplier price or a recipe's cost.
+  document.getElementById('deleteIngBtn').addEventListener('click', async () => {
+    if (!requireAuth() || !currentEdit) return;
+    const cfg = getStoredConfig();
+    setEditStatus('Checking where this ingredient is used...');
+    try {
+      const [siFresh, rlFresh] = await Promise.all([
+        sheetsGet(cfg.spreadsheetId, SI_RANGE, token),
+        sheetsGet(cfg.spreadsheetId, 'RecipeLines!A:H', token)
+      ]);
+      const siCount = siFresh.slice(1).filter(r => r[1] === currentEdit.id).length;
+      const rlCount = rlFresh.slice(1).filter(r => r[2] === 'Ingredient' && r[3] === currentEdit.id).length;
+      if (siCount || rlCount) {
+        const parts = [];
+        if (rlCount) parts.push(`${rlCount} recipe line(s)`);
+        if (siCount) parts.push(`${siCount} supplier price(s)`);
+        setEditStatus(`Can't delete — used in ${parts.join(' and ')}. Remove those first, then try again.`, 'error');
+        return;
+      }
+    } catch (err) {
+      setEditStatus('Error checking usage: ' + err.message, 'error');
+      return;
+    }
+    if (!confirm(`Delete "${currentEdit.name}"? This can't be undone.`)) { setEditStatus(''); return; }
+
+    setEditStatus('Deleting...');
+    try {
+      const tabs = await sheetsGetTabs(cfg.spreadsheetId, token);
+      const sheetId = (tabs.find(t => t.title === 'Ingredients') || {}).sheetId;
+      if (sheetId == null) throw new Error('Could not find the Ingredients tab.');
+      await sheetsBatchUpdate(cfg.spreadsheetId, [{
+        deleteDimension: { range: { sheetId, dimension: 'ROWS', startIndex: currentEdit.idx, endIndex: currentEdit.idx + 1 } }
+      }], token);
+      closeDetail();
+      await loadRows();
+      setPageStatus('Ingredient deleted.', 'ok');
+    } catch (err) {
+      setEditStatus('Error deleting: ' + err.message, 'error');
+    }
+  });
+
   // Link the ingredient to an existing supplier (append to SupplierIngredients).
   document.getElementById('linkForm').addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -553,8 +596,16 @@
 
   document.getElementById('reloadBtn').addEventListener('click', reloadAll);
 
-  window.addEventListener('load', () => {
-    if (requireAuth()) reloadAll();
+  window.addEventListener('load', async () => {
+    if (!requireAuth()) return;
+    await reloadAll();
+    // Support "ingredients.html?open=ING007" so other pages can link straight
+    // into an ingredient's detail card.
+    const openId = new URLSearchParams(location.search).get('open');
+    if (openId) {
+      const idx = cachedRows.findIndex((r, i) => i > 0 && r[0] === openId);
+      if (idx !== -1) openDetail(idx);
+    }
   });
 </script>
 </body>
