@@ -46,9 +46,12 @@
       <tbody id="recipeListBody"></tbody>
     </table>
 
-    <div id="recipeDetail" style="display:none;">
-      <div class="card">
-        <h2 style="margin-top:0;" id="rd_title">Recipe</h2>
+    <dialog id="recipeDialog">
+      <div class="dialog-head">
+        <h2 id="rd_title">Recipe</h2>
+        <button type="button" class="dialog-close" id="closeRecipeBtn" aria-label="Close">&times;</button>
+      </div>
+      <div class="dialog-body">
         <div class="pill-row">
           <span class="badge muted" id="rd_type"></span>
           <span class="badge muted" id="rd_yield"></span>
@@ -60,10 +63,9 @@
         <div class="toolbar">
           <button type="button" id="openPasteBtn" class="add-btn"><span class="plus">+</span> Paste recipe text</button>
         </div>
-      </div>
 
-      <div class="card">
-        <h2 style="margin-top:0;">Add a single line</h2>
+      <div class="dialog-section">
+        <h3 style="margin-top:0;">Add a single line</h3>
         <form id="lineForm">
           <div class="field-row">
             <div>
@@ -97,12 +99,16 @@
         <div id="ln_status" class="status-line"></div>
       </div>
 
-      <h2>Recipe lines</h2>
-      <table id="linesTable" style="display:none;">
-        <thead><tr><th>Component</th><th>Type</th><th>Quantity</th><th>Supplier</th><th>Line cost</th></tr></thead>
-        <tbody id="linesBody"></tbody>
-      </table>
-    </div>
+      <div class="dialog-section">
+        <h3>Recipe lines</h3>
+        <table id="linesTable" style="display:none;">
+          <thead><tr><th>Component</th><th>Type</th><th>Quantity</th><th>Supplier</th><th>Line cost</th></tr></thead>
+          <tbody id="linesBody"></tbody>
+        </table>
+        <p class="sub" id="noLines" style="display:none;">No lines yet — add one above or paste a recipe.</p>
+      </div>
+      </div>
+    </dialog>
 
   </div>
 
@@ -310,13 +316,16 @@
     if (tr) openRecipe(tr.dataset.id);
   });
 
+  const recipeDialog = document.getElementById('recipeDialog');
+  document.getElementById('closeRecipeBtn').addEventListener('click', () => recipeDialog.close());
+
   function openRecipe(id) {
     currentRecipe = recipesAll.find(r => r.id === id) || null;
-    if (!currentRecipe) { document.getElementById('recipeDetail').style.display = 'none'; return; }
+    if (!currentRecipe) return;
     renderRecipeDetail();
     refreshComponentOptions();
+    recipeDialog.showModal();
     loadLines();
-    document.getElementById('recipeDetail').scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
   // ---------- New recipe dialog ----------
@@ -367,7 +376,6 @@
 
   // ---------- Recipe detail ----------
   function renderRecipeDetail() {
-    document.getElementById('recipeDetail').style.display = 'block';
     document.getElementById('rd_title').textContent = currentRecipe.name;
     document.getElementById('rd_type').textContent = currentRecipe.type;
     document.getElementById('rd_yield').textContent = `Yields ${currentRecipe.yieldAmount} ${currentRecipe.yieldUnit}`;
@@ -442,7 +450,7 @@
     if (!comp.ref) return null;
     if (comp.type === 'Ingredient') {
       const chosen = supplierIngredients.find(s => s.id === document.getElementById('ln_supplier').value);
-      return chosen ? chosen.costPerBase : null;
+      return chosen ? chosen.costPerBase : 0; // no supplier price yet -> line costs £0 until one is linked
     }
     return comp.ref.costPerBase || 0;
   }
@@ -467,7 +475,6 @@
     const unit = document.getElementById('ln_unit').value;
     const supplierId = document.getElementById('ln_supplier').value || '';
     if (!comp.ref || !qty || !unit) { setLnStatus('Component, quantity, and unit are required.', 'error'); return; }
-    if (comp.type === 'Ingredient' && !supplierId) { setLnStatus('This ingredient has no supplier price yet — add one on the Price Lists page first.', 'error'); return; }
     const lineCost = recalcLineCost();
     if (lineCost === null) { setLnStatus('Could not calculate line cost — check the values.', 'error'); return; }
 
@@ -507,7 +514,9 @@
   function renderLinesTable() {
     const table = document.getElementById('linesTable');
     const body = document.getElementById('linesBody');
-    if (!currentLines.length) { table.style.display = 'none'; body.innerHTML = ''; return; }
+    const none = document.getElementById('noLines');
+    if (!currentLines.length) { table.style.display = 'none'; body.innerHTML = ''; none.style.display = 'block'; return; }
+    none.style.display = 'none';
     body.innerHTML = currentLines.map(l => `
       <tr>
         <td>${componentDisplayName(l.componentType, l.componentId)}</td>
@@ -538,7 +547,7 @@
     await loadRecipesOnly();
     currentRecipe = recipesAll.find(r => r.id === currentRecipe.id) || null;
     if (currentRecipe) { renderRecipeDetail(); await loadLines(); }
-    else { document.getElementById('recipeDetail').style.display = 'none'; }
+    else { recipeDialog.close(); }
   }
 
   document.getElementById('reloadAllBtn').addEventListener('click', async () => {
@@ -548,7 +557,7 @@
     if (currentRecipe) {
       currentRecipe = recipesAll.find(r => r.id === currentRecipe.id) || null;
       if (currentRecipe) { renderRecipeDetail(); refreshComponentOptions(); await loadLines(); }
-      else { document.getElementById('recipeDetail').style.display = 'none'; }
+      else { recipeDialog.close(); }
     }
     setPageStatus(`Loaded ${recipesAll.length} recipe(s).`, 'ok');
   });
@@ -816,7 +825,7 @@
       refreshComponentOptions();
       const noPrice = included.filter(r => supplierCostPerBase(r.supplierId) == null).length;
       pasteDialog.close();
-      setPageStatus(`Added ${appendLines.length} line(s)${noPrice ? ` — ${noPrice} had no supplier price (counted as £0; link a supplier and re-add to cost them)` : ''}.`, noPrice ? '' : 'ok');
+      setLnStatus(`Added ${appendLines.length} line(s)${noPrice ? ` — ${noPrice} had no supplier price (counted as £0; link a supplier and re-add to cost them)` : ''}.`, noPrice ? '' : 'ok');
     } catch (err) {
       setPasteStatus('Error: ' + err.message, 'error');
       document.getElementById('addParsedBtn').disabled = false;

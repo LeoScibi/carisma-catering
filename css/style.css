@@ -228,6 +228,10 @@ table.clickable tbody tr { cursor: pointer; }
 #reviewTable td select, #reviewTable td input { padding: 6px 8px; font-size: 13px; }
 #reviewTable td { vertical-align: middle; }
 
+/* Wider dialogs for the recipe detail and paste importer */
+#recipeDialog { max-width: 720px; }
+#pasteDialog { max-width: 880px; }
+
 /* Inline dietary checkboxes */
 .checks { display: flex; gap: 18px; flex-wrap: wrap; margin-top: 14px; }
 .checks label {
