@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Carisma Ops — Import</title>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<header class="app-header">
+  <div class="brand">Carisma <span>Ops</span></div>
+  <nav class="app-nav">
+    <a href="index.html">Dashboard</a>
+    <a href="ingredients.html">Ingredients</a>
+    <a href="suppliers.html">Suppliers</a>
+    <a href="supplier-ingredients.html">Supplier Prices</a>
+    <a href="recipes.html">Recipes</a>
+    <a href="import.html" class="active">Import</a>
+    <a href="setup.html">Setup</a>
+  </nav>
+</header>
+
+<main>
+  <h1>Import products</h1>
+  <p class="sub">Bulk-add ingredients from a CSV. Maps <strong>Product Name → Name</strong>, <strong>Category</strong>, <strong>Unit of Measure → Measure type</strong>, and the <strong>Vegan / Vegetarian / Gluten-Free</strong> flags. Preview first, then commit — nothing is written until you click Import.</p>
+
+  <div id="signedOutNotice" class="card" style="display:none;">
+    <span class="badge off">Not signed in</span>
+    <p style="font-size:13px; color:var(--muted); margin-bottom:0;">Go to the <a href="index.html">Dashboard</a> to sign in — your session will carry over here.</p>
+  </div>
+
+  <div class="card" id="importCard" style="display:none;">
+    <h2 style="margin-top:0;">1. Provide the CSV</h2>
+    <label>Choose a .csv file</label>
+    <input type="file" id="csvFile" accept=".csv,text/csv">
+    <label style="margin-top:16px;">…or paste CSV text</label>
+    <textarea id="csvText" style="min-height:120px; font-family:ui-monospace, Menlo, monospace; font-size:12px;" placeholder="Product Name,SKU,Category,Unit of Measure,..."></textarea>
+    <div class="checks">
+      <label><input type="checkbox" id="skipDupes" checked> Skip products that already exist (match by name)</label>
+    </div>
+    <button type="button" id="previewBtn">Preview</button>
+    <div id="status" class="status-line"></div>
+  </div>
+
+  <div class="card" id="previewCard" style="display:none;">
+    <h2 style="margin-top:0;">2. Review</h2>
+    <div id="summary" class="sub"></div>
+    <div style="overflow-x:auto;">
+      <table id="previewTable">
+        <thead><tr>
+          <th>Status</th><th>Name</th><th>Category</th><th>Measure type</th>
+          <th>Base unit</th><th>Vg</th><th>Veg</th><th>GF</th><th>Note</th>
+        </tr></thead>
+        <tbody id="previewBody"></tbody>
+      </table>
+    </div>
+    <button type="button" id="importBtn">Import</button>
+    <button type="button" id="cancelBtn" class="secondary">Start over</button>
+    <div id="importStatus" class="status-line"></div>
+  </div>
+</main>
+
+<script src="js/config.js"></script>
+<script src="js/sheets.js"></script>
+<script src="js/units.js"></script>
+<script>
+  const RANGE = 'Ingredients!A:K';
+  const HEADERS = ['ID','NAME','CATEGORY','MEASURE TYPE','BASE UNIT','DESCRIPTION','STORAGE','SHELF LIFE','VEGAN','VEGETARIAN','GLUTEN FREE'];
+
+  // Unit of Measure (from the CSV) -> one of the app's three measure families.
+  // Anything counted (pieces, bunches, packs, dozens…) collapses to "Unit".
+  const UOM_MAP = {
+    kg: 'Weight', kgs: 'Weight', kilogram: 'Weight', kilograms: 'Weight', kilo: 'Weight', kilos: 'Weight',
+    g: 'Weight', gram: 'Weight', grams: 'Weight', gr: 'Weight', weight: 'Weight',
+    l: 'Volume', litre: 'Volume', litres: 'Volume', liter: 'Volume', liters: 'Volume',
+    ml: 'Volume', millilitre: 'Volume', millilitres: 'Volume', volume: 'Volume',
+    piece: 'Unit', pieces: 'Unit', pc: 'Unit', pcs: 'Unit', each: 'Unit', unit: 'Unit', units: 'Unit',
+    clove: 'Unit', cloves: 'Unit', bunch: 'Unit', bunches: 'Unit', pack: 'Unit', packs: 'Unit',
+    dozen: 'Unit', dozens: 'Unit', head: 'Unit', heads: 'Unit', tin: 'Unit', tins: 'Unit', can: 'Unit', cans: 'Unit'
+  };
+
+  const status = document.getElementById('status');
+  const importStatus = document.getElementById('importStatus');
+  let token = null;
+  let existingNames = new Set(); // lowercased names already in the Ingredients tab
+  let parsed = [];              // preview rows: {name, category, measureType, baseUnit, vegan, veg, gf, status, note}
+
+  function setStatus(msg, kind) { status.textContent = msg; status.className = 'status-line' + (kind ? ' ' + kind : ''); }
+  function setImportStatus(msg, kind) { importStatus.textContent = msg; importStatus.className = 'status-line' + (kind ? ' ' + kind : ''); }
+
+  function requireAuth() {
+    const cfg = getStoredConfig();
+    token = tryResumeSession();
+    if (!token || !cfg.spreadsheetId) {
+      document.getElementById('signedOutNotice').style.display = 'block';
+      document.getElementById('importCard').style.display = 'none';
+      return false;
+    }
+    document.getElementById('signedOutNotice').style.display = 'none';
+    document.getElementById('importCard').style.display = 'block';
+    return true;
+  }
+
+  function flagChecked(v) {
+    return ['yes', 'checked', 'true', 'x', '1', 'y'].includes((v || '').toString().trim().toLowerCase());
+  }
+  function flagValue(isChecked) { return isChecked ? 'Yes' : ''; }
+
+  // Minimal RFC-4180-ish CSV parser: handles quoted fields, embedded commas,
+  // and "" escaped quotes. Returns an array of string arrays.
+  function parseCSV(text) {
+    if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1); // strip UTF-8 BOM
+    const rows = [];
+    let field = '', row = [], inQuotes = false;
+    for (let i = 0; i < text.length; i++) {
+      const ch = text[i];
+      if (inQuotes) {
+        if (ch === '"') {
+          if (text[i + 1] === '"') { field += '"'; i++; }
+          else inQuotes = false;
+        } else field += ch;
+      } else {
+        if (ch === '"') inQuotes = true;
+        else if (ch === ',') { row.push(field); field = ''; }
+        else if (ch === '\r') { /* ignore */ }
+        else if (ch === '\n') { row.push(field); rows.push(row); row = []; field = ''; }
+        else field += ch;
+      }
+    }
+    if (field.length > 0 || row.length > 0) { row.push(field); rows.push(row); }
+    return rows;
+  }
+
+  // Finds a column index by trying each candidate against the header names.
+  function findCol(header, candidates, contains) {
+    const norm = header.map(h => (h || '').toString().trim().toLowerCase());
+    for (const c of candidates) {
+      const i = contains ? norm.findIndex(h => h.includes(c)) : norm.indexOf(c);
+      if (i !== -1) return i;
+    }
+    return -1;
+  }
+
+  async function loadExistingNames() {
+    const cfg = getStoredConfig();
+    const rows = await sheetsGet(cfg.spreadsheetId, RANGE, token);
+    existingNames = new Set(rows.slice(1).map(r => (r[1] || '').toString().trim().toLowerCase()).filter(Boolean));
+  }
+
+  function buildPreview(text) {
+    const grid = parseCSV(text).filter(r => r.some(c => (c || '').trim() !== ''));
+    if (grid.length < 2) throw new Error('No data rows found in the CSV.');
+    const header = grid[0];
+    const nameIdx = findCol(header, ['product name', 'name']);
+    const catIdx = findCol(header, ['category']);
+    const uomIdx = findCol(header, ['unit of measure', 'unit', 'uom']);
+    const veganIdx = findCol(header, ['vegan'], true);
+    const vegIdx = findCol(header, ['vegetarian'], true);
+    const gfIdx = findCol(header, ['gluten'], true);
+    if (nameIdx === -1 || uomIdx === -1) {
+      throw new Error('Could not find the required "Product Name" and "Unit of Measure" columns.');
+    }
+
+    const seenInFile = new Set();
+    parsed = grid.slice(1).map(r => {
+      const name = (r[nameIdx] || '').trim();
+      const category = catIdx !== -1 ? (r[catIdx] || '').trim() : '';
+      const uomRaw = (r[uomIdx] || '').trim();
+      const measureType = UOM_MAP[uomRaw.toLowerCase()] || '';
+      const vegan = veganIdx !== -1 && flagChecked(r[veganIdx]);
+      const veg = vegIdx !== -1 && flagChecked(r[vegIdx]);
+      const gf = gfIdx !== -1 && flagChecked(r[gfIdx]);
+
+      let st = 'new', note = '';
+      const key = name.toLowerCase();
+      if (!name) { st = 'error'; note = 'Missing product name'; }
+      else if (!measureType) { st = 'error'; note = `Unrecognised unit "${uomRaw || '(blank)'}"`; }
+      else if (existingNames.has(key)) { st = 'duplicate'; note = 'Already in Ingredients'; }
+      else if (seenInFile.has(key)) { st = 'duplicate'; note = 'Repeated in this file'; }
+      if (name && st !== 'duplicate') seenInFile.add(key);
+
+      return { name, category, measureType, baseUnit: baseUnitFor(measureType), vegan, veg, gf, status: st, note };
+    });
+    return parsed;
+  }
+
+  function renderPreview() {
+    const yn = b => b ? '✓' : '';
+    const badgeFor = s => s === 'new' ? '<span class="badge">New</span>'
+      : s === 'duplicate' ? '<span class="badge off">Skip</span>'
+      : '<span class="badge off">Error</span>';
+    document.getElementById('previewBody').innerHTML = parsed.map(p => `
+      <tr>
+        <td>${badgeFor(p.status)}</td>
+        <td>${p.name || '<em style="color:var(--muted)">(blank)</em>'}</td>
+        <td>${p.category}</td>
+        <td>${p.measureType}</td>
+        <td>${p.baseUnit}</td>
+        <td>${yn(p.vegan)}</td>
+        <td>${yn(p.veg)}</td>
+        <td>${yn(p.gf)}</td>
+        <td style="color:var(--muted); font-size:12px;">${p.note}</td>
+      </tr>
+    `).join('');
+
+    const counts = parsed.reduce((a, p) => { a[p.status] = (a[p.status] || 0) + 1; return a; }, {});
+    const nNew = counts.new || 0, nDup = counts.duplicate || 0, nErr = counts.error || 0;
+    document.getElementById('summary').innerHTML =
+      `<strong>${nNew}</strong> new to import · <strong>${nDup}</strong> skipped (duplicates) · <strong>${nErr}</strong> errors. ` +
+      (nErr ? 'Rows marked Error are excluded — fix the unit or name and re-preview to include them.' : '');
+    const btn = document.getElementById('importBtn');
+    btn.textContent = nNew ? `Import ${nNew} product${nNew === 1 ? '' : 's'}` : 'Nothing to import';
+    btn.disabled = nNew === 0;
+    document.getElementById('previewCard').style.display = 'block';
+  }
+
+  async function doPreview() {
+    if (!requireAuth()) return;
+    const text = document.getElementById('csvText').value.trim();
+    if (!text) { setStatus('Paste some CSV or choose a file first.', 'error'); return; }
+    setStatus('Reading current ingredients…');
+    try {
+      await loadExistingNames();
+      buildPreview(text);
+      setStatus('');
+      setImportStatus('');
+      renderPreview();
+      document.getElementById('previewCard').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    } catch (err) {
+      setStatus('Error: ' + err.message, 'error');
+    }
+  }
+
+  async function doImport() {
+    if (!requireAuth()) return;
+    const toAdd = parsed.filter(p => p.status === 'new');
+    if (!toAdd.length) return;
+    const cfg = getStoredConfig();
+    document.getElementById('importBtn').disabled = true;
+    setImportStatus(`Importing ${toAdd.length} product(s)…`);
+    try {
+      // Read the live list once, both to assign sequential IDs and to make sure
+      // the header carries the dietary columns before we append.
+      const existing = await sheetsGet(cfg.spreadsheetId, RANGE, token);
+      const rows = existing.length ? existing : [HEADERS];
+      const headerLen = (rows[0] || []).filter(c => (c || '').trim() !== '').length;
+      if (headerLen < HEADERS.length) {
+        await sheetsUpdateRange(cfg.spreadsheetId, 'Ingredients!A1:K1', [HEADERS], token, 'USER_ENTERED');
+      }
+
+      // Assign IDs continuing from the highest existing ING number.
+      let n = 0;
+      for (let i = 1; i < rows.length; i++) {
+        const cell = (rows[i][0] || '').toString();
+        if (cell.startsWith('ING')) { const v = parseInt(cell.slice(3), 10); if (!isNaN(v) && v > n) n = v; }
+      }
+      const newRows = toAdd.map(p => {
+        n += 1;
+        const id = 'ING' + String(n).padStart(3, '0');
+        return [id, p.name, p.category, p.measureType, p.baseUnit, '', '', '', flagValue(p.vegan), flagValue(p.veg), flagValue(p.gf)];
+      });
+
+      await sheetsAppendRows(cfg.spreadsheetId, RANGE, newRows, token);
+      setImportStatus(`Imported ${newRows.length} product(s). They now show as duplicates if you re-preview.`, 'ok');
+      // Refresh duplicate detection and re-render so the same file can't double-import.
+      await loadExistingNames();
+      buildPreview(document.getElementById('csvText').value.trim());
+      renderPreview();
+    } catch (err) {
+      setImportStatus('Error importing: ' + err.message + ' — if the Ingredients tab is missing, run Setup first.', 'error');
+      document.getElementById('importBtn').disabled = false;
+    }
+  }
+
+  document.getElementById('csvFile').addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => { document.getElementById('csvText').value = reader.result; setStatus(`Loaded ${file.name}. Click Preview.`, 'ok'); };
+    reader.onerror = () => setStatus('Could not read the file.', 'error');
+    reader.readAsText(file);
+  });
+
+  document.getElementById('previewBtn').addEventListener('click', doPreview);
+  document.getElementById('importBtn').addEventListener('click', doImport);
+  document.getElementById('cancelBtn').addEventListener('click', () => {
+    document.getElementById('previewCard').style.display = 'none';
+    parsed = [];
+    setImportStatus('');
+  });
+
+  window.addEventListener('load', requireAuth);
+</script>
+</body>
+</html>

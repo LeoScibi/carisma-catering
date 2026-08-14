@@ -17,6 +17,7 @@
     <a href="suppliers.html">Suppliers</a>
     <a href="supplier-ingredients.html">Supplier Prices</a>
     <a href="recipes.html">Recipes</a>
+    <a href="import.html">Import</a>
     <a href="setup.html">Setup</a>
   </nav>
 </header>
@@ -78,6 +79,12 @@
           <div><label>Storage</label><input id="f_storage" placeholder="e.g. Chilled, Ambient, Frozen"></div>
           <div><label>Shelf life</label><input id="f_shelflife"></div>
         </div>
+        <label>Dietary</label>
+        <div class="checks">
+          <label><input type="checkbox" id="f_vegan"> Vegan</label>
+          <label><input type="checkbox" id="f_vegetarian"> Vegetarian</label>
+          <label><input type="checkbox" id="f_glutenfree"> Gluten-free</label>
+        </div>
         <button type="submit" id="addBtn">Add ingredient</button>
         <button type="button" id="cancelAddBtn" class="secondary">Cancel</button>
       </form>
@@ -116,6 +123,12 @@
         <div class="field-row">
           <div><label>Storage</label><input id="e_storage" placeholder="e.g. Chilled, Ambient, Frozen"></div>
           <div><label>Shelf life</label><input id="e_shelflife"></div>
+        </div>
+        <label>Dietary</label>
+        <div class="checks">
+          <label><input type="checkbox" id="e_vegan"> Vegan</label>
+          <label><input type="checkbox" id="e_vegetarian"> Vegetarian</label>
+          <label><input type="checkbox" id="e_glutenfree"> Gluten-free</label>
         </div>
         <button type="submit" id="saveBtn">Save changes</button>
       </form>
@@ -157,8 +170,8 @@
 <script src="js/sheets.js"></script>
 <script src="js/units.js"></script>
 <script>
-  const RANGE = 'Ingredients!A:H';
-  const HEADERS = ['ID','NAME','CATEGORY','MEASURE TYPE','BASE UNIT','DESCRIPTION','STORAGE','SHELF LIFE'];
+  const RANGE = 'Ingredients!A:K';
+  const HEADERS = ['ID','NAME','CATEGORY','MEASURE TYPE','BASE UNIT','DESCRIPTION','STORAGE','SHELF LIFE','VEGAN','VEGETARIAN','GLUTEN FREE'];
   const SI_RANGE = 'SupplierIngredients!A:G';
   const SI_HEADERS = ['ID','INGREDIENT ID','SUPPLIER ID','PACK SIZE','PACK UNIT','PRICE','COST PER BASE UNIT'];
   const SUP_RANGE = 'Suppliers!A:D';
@@ -182,6 +195,13 @@
     linkStatus.className = 'status-line' + (kind ? ' ' + kind : '');
   }
   function supplierName(id) { const s = suppliers.find(x => x.id === id); return s ? s.name : id; }
+
+  // Dietary flags are stored as "Yes" / "" in the sheet. Reading is lenient so
+  // values imported from elsewhere ("checked", "TRUE", "x", 1) still register.
+  function flagChecked(v) {
+    return ['yes', 'checked', 'true', 'x', '1', 'y'].includes((v || '').toString().trim().toLowerCase());
+  }
+  function flagValue(isChecked) { return isChecked ? 'Yes' : ''; }
 
   // Status inside the Add dialog (in-progress / validation / add errors).
   function setStatus(msg, kind) {
@@ -252,6 +272,13 @@
     try {
       const rows = await sheetsGet(cfg.spreadsheetId, RANGE, token);
       cachedRows = rows.length ? rows : [HEADERS];
+      // Self-heal an older, shorter header (pre-dietary-flags sheets) so the new
+      // columns line up. Writing the canonical header is safe and idempotent.
+      const headerLen = (cachedRows[0] || []).filter(c => (c || '').trim() !== '').length;
+      if (headerLen < HEADERS.length) {
+        await sheetsUpdateRange(cfg.spreadsheetId, 'Ingredients!A1:K1', [HEADERS], token, 'USER_ENTERED');
+        cachedRows[0] = HEADERS.slice();
+      }
       renderTable(cachedRows);
       populateCategories(cachedRows);
       setPageStatus(`Loaded ${Math.max(cachedRows.length - 1, 0)} ingredient(s).`, 'ok');
@@ -310,7 +337,10 @@
         baseUnitFor(measureType),
         '', // DESCRIPTION column kept for schema alignment, no longer captured
         document.getElementById('f_storage').value.trim(),
-        document.getElementById('f_shelflife').value.trim()
+        document.getElementById('f_shelflife').value.trim(),
+        flagValue(document.getElementById('f_vegan').checked),
+        flagValue(document.getElementById('f_vegetarian').checked),
+        flagValue(document.getElementById('f_glutenfree').checked)
       ];
 
       setStatus('Adding ingredient...');
@@ -405,6 +435,9 @@
     document.getElementById('e_baseunit').value = baseUnitFor(editMeasureType());
     document.getElementById('e_storage').value = r[6] || '';
     document.getElementById('e_shelflife').value = r[7] || '';
+    document.getElementById('e_vegan').checked = flagChecked(r[8]);
+    document.getElementById('e_vegetarian').checked = flagChecked(r[9]);
+    document.getElementById('e_glutenfree').checked = flagChecked(r[10]);
     setEditStatus('');
     setLinkStatus('');
     document.getElementById('linkForm').reset();
@@ -460,12 +493,15 @@
       baseUnitFor(measureType),
       original[5] || '', // preserve the existing DESCRIPTION cell
       document.getElementById('e_storage').value.trim(),
-      document.getElementById('e_shelflife').value.trim()
+      document.getElementById('e_shelflife').value.trim(),
+      flagValue(document.getElementById('e_vegan').checked),
+      flagValue(document.getElementById('e_vegetarian').checked),
+      flagValue(document.getElementById('e_glutenfree').checked)
     ];
 
     setEditStatus('Saving...');
     try {
-      await sheetsUpdateRange(cfg.spreadsheetId, `Ingredients!A${sheetRow}:H${sheetRow}`, [row], token, 'USER_ENTERED');
+      await sheetsUpdateRange(cfg.spreadsheetId, `Ingredients!A${sheetRow}:K${sheetRow}`, [row], token, 'USER_ENTERED');
       document.getElementById('detailTitle').textContent = `${currentEdit.id} · ${name}`;
       setEditStatus('Saved.', 'ok');
       await loadRows();

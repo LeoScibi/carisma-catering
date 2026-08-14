@@ -219,3 +219,12 @@ dialog::backdrop { background: rgba(28, 28, 28, 0.38); }
 
 /* Rows that open a detail view on click */
 table.clickable tbody tr { cursor: pointer; }
+
+/* Inline dietary checkboxes */
+.checks { display: flex; gap: 18px; flex-wrap: wrap; margin-top: 14px; }
+.checks label {
+  display: inline-flex; align-items: center; gap: 7px; margin: 0;
+  font-size: 13px; font-weight: 500; color: var(--ink);
+  text-transform: none; letter-spacing: normal;
+}
+input[type="checkbox"] { width: auto; margin: 0; }

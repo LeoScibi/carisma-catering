@@ -34,6 +34,17 @@ async function sheetsAppend(spreadsheetId, range, row, token) {
   return sheetsHandle(res);
 }
 
+// Appends many rows at once (bulk import), e.g. rows = [[...],[...]].
+async function sheetsAppendRows(spreadsheetId, range, rows, token) {
+  const url = `${sheetsBaseUrl(spreadsheetId)}/values/${encodeURIComponent(range)}:append?valueInputOption=USER_ENTERED`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ values: rows })
+  });
+  return sheetsHandle(res);
+}
+
 // Overwrites a fixed range, e.g. "Ingredients!A1:O1" for a header row.
 async function sheetsUpdateRange(spreadsheetId, range, values, token, valueInputOption = 'RAW') {
   const url = `${sheetsBaseUrl(spreadsheetId)}/values/${encodeURIComponent(range)}?valueInputOption=${valueInputOption}`;

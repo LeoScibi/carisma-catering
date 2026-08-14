@@ -17,6 +17,7 @@
     <a href="suppliers.html">Suppliers</a>
     <a href="supplier-ingredients.html">Supplier Prices</a>
     <a href="recipes.html">Recipes</a>
+    <a href="import.html">Import</a>
     <a href="setup.html" class="active">Setup</a>
   </nav>
 </header>
@@ -48,7 +49,7 @@
   const REQUIRED_TABS = [
     {
       title: 'Ingredients',
-      headers: ['ID','NAME','CATEGORY','MEASURE TYPE','BASE UNIT','DESCRIPTION','STORAGE','SHELF LIFE']
+      headers: ['ID','NAME','CATEGORY','MEASURE TYPE','BASE UNIT','DESCRIPTION','STORAGE','SHELF LIFE','VEGAN','VEGETARIAN','GLUTEN FREE']
     },
     {
       title: 'Suppliers',
@@ -166,9 +167,13 @@
       try {
         const endCol = colLetterLocal(tab.headers.length);
         const firstRow = await sheetsGet(cfg.spreadsheetId, `${tab.title}!A1:${endCol}1`, token);
-        const hasHeader = firstRow.length > 0 && firstRow[0].some(c => (c || '').trim() !== '');
+        const existingLen = firstRow.length ? firstRow[0].filter(c => (c || '').trim() !== '').length : 0;
+        const hasHeader = existingLen > 0;
 
-        if (!hasHeader) {
+        // Write the header when the tab is empty, OR extend it when an older,
+        // shorter header is present (e.g. Ingredients gaining dietary columns).
+        // Writing the canonical header row is safe and idempotent.
+        if (!hasHeader || existingLen < tab.headers.length) {
           await sheetsUpdateRange(cfg.spreadsheetId, `${tab.title}!A1:${endCol}1`, [tab.headers], token);
           await sheetsBatchUpdate(cfg.spreadsheetId, [{
             repeatCell: {
@@ -177,7 +182,10 @@
               fields: 'userEnteredFormat.textFormat.bold'
             }
           }], token);
-          statusBadge = badge(wasMissing ? 'Created + headers added' : 'Headers added', true);
+          const label = !hasHeader
+            ? (wasMissing ? 'Created + headers added' : 'Headers added')
+            : 'Headers updated';
+          statusBadge = badge(label, true);
         } else {
           statusBadge = badge(wasMissing ? 'Created' : 'Already set up', true);
         }
