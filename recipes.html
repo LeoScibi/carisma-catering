@@ -125,7 +125,12 @@
       </div>
 
       <div class="dialog-section">
-        <h3>Recipe lines</h3>
+        <div style="display:flex; align-items:center; justify-content:space-between; gap:12px;">
+          <h3 style="margin:0;">Recipe lines</h3>
+          <button type="button" id="refreshCostsBtn" class="secondary" style="margin:0;">Refresh costs</button>
+        </div>
+        <p class="sub">Line costs are captured when a line is added. If you add or change a supplier price afterwards, use "Refresh costs" to re-price existing lines.</p>
+        <div id="refreshCostsStatus" class="status-line"></div>
         <table id="linesTable" style="display:none;">
           <thead><tr><th>Component</th><th>Type</th><th>Quantity</th><th>Supplier</th><th>Line cost</th><th></th></tr></thead>
           <tbody id="linesBody"></tbody>
@@ -719,6 +724,58 @@
     const sheetRow = rowIndex + 1;
     await sheetsUpdateRange(cfg.spreadsheetId, `Recipes!G${sheetRow}:H${sheetRow}`, [[totalCost.toFixed(2), costPerBase.toFixed(4)]], token, 'USER_ENTERED');
   }
+
+  // Re-derives each line's cost from current supplier prices / sub-recipe costs
+  // and writes any changes back to RecipeLines, then re-totals the recipe. Lines
+  // keep their stored supplier when it still has a price; otherwise they fall
+  // back to the current cheapest supplier for that ingredient.
+  async function refreshLineCosts() {
+    if (!currentRecipe) return;
+    const status = document.getElementById('refreshCostsStatus');
+    status.textContent = 'Refreshing...'; status.className = 'status-line';
+    const btn = document.getElementById('refreshCostsBtn');
+    btn.disabled = true;
+    try {
+      const cfg = getStoredConfig();
+      await Promise.all([loadSupplierIngredients(), loadRecipesOnly()]);
+      const updates = [];
+      let changed = 0;
+      for (const line of currentLines) {
+        let measureType, costPerBase, newSupplierId = line.supplierId;
+        if (line.componentType === 'Ingredient') {
+          const ing = ingredientById(line.componentId);
+          measureType = ing ? ing.measureType : '';
+          let chosen = line.supplierId ? supplierIngredients.find(s => s.id === line.supplierId) : null;
+          if (!chosen) chosen = cheapestSupplierFor(line.componentId);
+          costPerBase = chosen ? chosen.costPerBase : 0;
+          newSupplierId = chosen ? chosen.id : '';
+        } else {
+          const ref = recipesAll.find(r => r.id === line.componentId);
+          measureType = ref ? ref.yieldMeasureType : '';
+          costPerBase = ref ? (ref.costPerBase || 0) : 0;
+        }
+        const newLineCost = measureType ? toBaseAmount(measureType, line.quantity, line.unit) * costPerBase : 0;
+        if (Math.abs(newLineCost - line.lineCost) > 0.0001 || newSupplierId !== line.supplierId) {
+          changed++;
+          updates.push(sheetsUpdateRange(
+            cfg.spreadsheetId, `RecipeLines!G${line.rowIndex + 1}:H${line.rowIndex + 1}`,
+            [[newSupplierId, newLineCost.toFixed(4)]], token, 'USER_ENTERED'
+          ));
+        }
+      }
+      await Promise.all(updates);
+      if (changed) await recalcAndSaveRecipeCost(cfg);
+      await refreshCurrentRecipe();
+      status.textContent = changed ? `Updated ${changed} line(s).` : 'All line costs already up to date.';
+      status.className = 'status-line ok';
+    } catch (err) {
+      status.textContent = 'Error refreshing costs: ' + err.message;
+      status.className = 'status-line error';
+    } finally {
+      btn.disabled = false;
+    }
+  }
+  document.getElementById('refreshCostsBtn').addEventListener('click', refreshLineCosts);
 
   async function refreshCurrentRecipe() {
     await loadRecipesOnly();
