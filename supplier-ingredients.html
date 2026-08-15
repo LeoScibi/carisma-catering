@@ -68,8 +68,8 @@
 
 <script src="js/config.js?v=2"></script>
 <script src="js/sheets.js?v=2"></script>
-<script src="js/units.js?v=2"></script>
-<script src="js/ingredient-modal.js?v=2"></script>
+<script src="js/units.js?v=3"></script>
+<script src="js/ingredient-modal.js?v=3"></script>
 <script>
   const SI_RANGE = 'SupplierIngredients!A:G';
   const SI_HEADERS = ['ID','INGREDIENT ID','SUPPLIER ID','PACK SIZE','PACK UNIT','PRICE','COST PER BASE UNIT'];
@@ -109,7 +109,7 @@
     const ing = currentIngredient();
     const sel = document.getElementById('f_packunit');
     if (!ing) { sel.innerHTML = '<option value="">Choose ingredient first</option>'; return; }
-    sel.innerHTML = unitsForType(ing.measureType).map(u => `<option value="${u}">${u}</option>`).join('');
+    sel.innerHTML = unitsForType(ing.measureType).map(u => `<option value="${u}">${unitLabel(ing.measureType, u)}</option>`).join('');
     recalc();
   }
 

@@ -4,9 +4,13 @@
 // convertible display unit. Metric only, deliberately simple: no generic
 // unit-conversion engine, just fixed multipliers within each family.
 
+// tsp/tbsp are exact for Volume (1 tsp = 5ml, 1 tbsp = 15ml). For Weight
+// they're necessarily an average — a teaspoon of paprika and a teaspoon of
+// salt don't weigh the same — based on ~3g per teaspoon for a typical
+// ground spice. Good enough for costing, not for baking chemistry.
 const MEASURE_FAMILIES = {
-  Weight: { base: 'kg', units: { kg: 1, g: 0.001 } },
-  Volume: { base: 'L', units: { L: 1, ml: 0.001 } },
+  Weight: { base: 'kg', units: { kg: 1, g: 0.001, tsp: 0.003, tbsp: 0.009 } },
+  Volume: { base: 'L', units: { L: 1, ml: 0.001, tsp: 0.005, tbsp: 0.015 } },
   Unit:   { base: 'pc', units: { pc: 1 } }
 };
 
@@ -16,6 +20,12 @@ function baseUnitFor(measureType) {
 
 function unitsForType(measureType) {
   return MEASURE_FAMILIES[measureType] ? Object.keys(MEASURE_FAMILIES[measureType].units) : [];
+}
+
+// Display label for a unit option — flags the two units whose conversion is
+// an average rather than an exact figure, so anyone picking them can see that.
+function unitLabel(measureType, unit) {
+  return (measureType === 'Weight' && (unit === 'tsp' || unit === 'tbsp')) ? unit + ' (≈ avg.)' : unit;
 }
 
 // Converts an amount in `unit` to the family's base unit (kg, L, or pc).

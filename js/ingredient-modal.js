@@ -130,7 +130,8 @@
 
   function refreshLinkPackUnits() {
     const sel = document.getElementById('im_l_packunit');
-    sel.innerHTML = unitsForType(editMeasureType()).map(u => `<option value="${u}">${u}</option>`).join('');
+    const mt = editMeasureType();
+    sel.innerHTML = unitsForType(mt).map(u => `<option value="${u}">${unitLabel(mt, u)}</option>`).join('');
     recalcLink();
   }
 

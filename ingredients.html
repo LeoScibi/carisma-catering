@@ -170,7 +170,7 @@
 
 <script src="js/config.js?v=2"></script>
 <script src="js/sheets.js?v=2"></script>
-<script src="js/units.js?v=2"></script>
+<script src="js/units.js?v=3"></script>
 <script>
   const RANGE = 'Ingredients!A:K';
   const HEADERS = ['ID','NAME','CATEGORY','MEASURE TYPE','BASE UNIT','DESCRIPTION','STORAGE','SHELF LIFE','VEGAN','VEGETARIAN','GLUTEN FREE'];
@@ -380,7 +380,8 @@
 
   function refreshLinkPackUnits() {
     const sel = document.getElementById('l_packunit');
-    sel.innerHTML = unitsForType(editMeasureType()).map(u => `<option value="${u}">${u}</option>`).join('');
+    const mt = editMeasureType();
+    sel.innerHTML = unitsForType(mt).map(u => `<option value="${u}">${unitLabel(mt, u)}</option>`).join('');
     recalcLink();
   }
 

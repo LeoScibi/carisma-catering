@@ -236,8 +236,8 @@
 
 <script src="js/config.js?v=2"></script>
 <script src="js/sheets.js?v=2"></script>
-<script src="js/units.js?v=2"></script>
-<script src="js/ingredient-modal.js?v=2"></script>
+<script src="js/units.js?v=3"></script>
+<script src="js/ingredient-modal.js?v=3"></script>
 <script>
   const ING_RANGE = 'Ingredients!A:K';
   const ING_HEADERS = ['ID','NAME','CATEGORY','MEASURE TYPE','BASE UNIT','DESCRIPTION','STORAGE','SHELF LIFE','VEGAN','VEGETARIAN','GLUTEN FREE'];
@@ -376,8 +376,9 @@
 
   document.getElementById('nr_measuretype').addEventListener('change', (e) => {
     const sel = document.getElementById('nr_yieldunit');
-    const opts = unitsForType(e.target.value);
-    sel.innerHTML = opts.length ? opts.map(u => `<option value="${u}">${u}</option>`).join('') : '<option value="">Choose measure type first</option>';
+    const mt = e.target.value;
+    const opts = unitsForType(mt);
+    sel.innerHTML = opts.length ? opts.map(u => `<option value="${u}">${unitLabel(mt, u)}</option>`).join('') : '<option value="">Choose measure type first</option>';
   });
 
   document.getElementById('newRecipeForm').addEventListener('submit', async (e) => {
@@ -504,7 +505,7 @@
       supSel.innerHTML = '<option value="">—</option>';
       recalcLineCost(); return;
     }
-    unitSel.innerHTML = unitsForType(comp.measureType).map(u => `<option value="${u}">${u}</option>`).join('');
+    unitSel.innerHTML = unitsForType(comp.measureType).map(u => `<option value="${u}">${unitLabel(comp.measureType, u)}</option>`).join('');
     if (comp.type === 'Ingredient') {
       supWrap.style.display = 'block';
       const options = supplierIngredients.filter(s => s.ingredientId === comp.ref.id);
@@ -920,8 +921,8 @@
     lb: ['Weight', 'g', 453.6], lbs: ['Weight', 'g', 453.6], pound: ['Weight', 'g', 453.6], pounds: ['Weight', 'g', 453.6],
     ml: ['Volume', 'ml', 1], milliliter: ['Volume', 'ml', 1], millilitre: ['Volume', 'ml', 1], milliliters: ['Volume', 'ml', 1], millilitres: ['Volume', 'ml', 1],
     l: ['Volume', 'L', 1], litre: ['Volume', 'L', 1], litres: ['Volume', 'L', 1], liter: ['Volume', 'L', 1], liters: ['Volume', 'L', 1],
-    tbsp: ['Volume', 'ml', 15], tbs: ['Volume', 'ml', 15], tablespoon: ['Volume', 'ml', 15], tablespoons: ['Volume', 'ml', 15],
-    tsp: ['Volume', 'ml', 5], teaspoon: ['Volume', 'ml', 5], teaspoons: ['Volume', 'ml', 5],
+    tbsp: ['Weight|Volume', 'tbsp', 1], tbs: ['Weight|Volume', 'tbsp', 1], tablespoon: ['Weight|Volume', 'tbsp', 1], tablespoons: ['Weight|Volume', 'tbsp', 1],
+    tsp: ['Weight|Volume', 'tsp', 1], teaspoon: ['Weight|Volume', 'tsp', 1], teaspoons: ['Weight|Volume', 'tsp', 1],
     cup: ['Volume', 'ml', 240], cups: ['Volume', 'ml', 240],
     pc: ['Unit', 'pc', 1], piece: ['Unit', 'pc', 1], pieces: ['Unit', 'pc', 1],
     clove: ['Unit', 'pc', 1], cloves: ['Unit', 'pc', 1], slice: ['Unit', 'pc', 1], slices: ['Unit', 'pc', 1],
@@ -1046,11 +1047,11 @@
       const match = p.name ? matchIngredient(p.name) : null;
       let measureType = '', unit = '', qty = p.qty, note = '';
       if (match) measureType = match.measureType;
-      else if (p.cook) measureType = p.cook[0];
+      else if (p.cook) measureType = p.cook[0].split('|')[0]; // e.g. tsp/tbsp default to Weight when creating a new ingredient
       else measureType = 'Unit';
 
       if (p.cook) {
-        if (p.cook[0] === measureType) { unit = p.cook[1]; qty = (p.qty != null ? +(p.qty * p.cook[2]).toFixed(2) : null); }
+        if (p.cook[0].split('|').includes(measureType)) { unit = p.cook[1]; qty = (p.qty != null ? +(p.qty * p.cook[2]).toFixed(2) : null); }
         else { unit = baseUnitFor(measureType); note = `“${p.unitRaw}” doesn’t fit ${measureType} — check qty/unit`; }
       } else {
         unit = (measureType === 'Unit') ? 'pc' : baseUnitFor(measureType);
@@ -1102,7 +1103,7 @@
   }
   function unitOptions(m) {
     const units = unitsForType(m.measureType) || [];
-    return units.map(u => `<option value="${u}" ${m.unit === u ? 'selected' : ''}>${u}</option>`).join('');
+    return units.map(u => `<option value="${u}" ${m.unit === u ? 'selected' : ''}>${unitLabel(m.measureType, u)}</option>`).join('');
   }
   function supplierCell(m, idx) {
     if (m.ingredientId === '__new__') return '<span style="color:var(--muted); font-size:12px;">create first</span>';
@@ -1269,7 +1270,7 @@
     document.getElementById('lk_supplier').innerHTML = suppliers.length
       ? suppliers.map(s => `<option value="${s.id}">${s.name}</option>`).join('')
       : '<option value="">No suppliers — add one on the Suppliers page</option>';
-    document.getElementById('lk_packunit').innerHTML = unitsForType(ing.measureType).map(u => `<option value="${u}">${u}</option>`).join('');
+    document.getElementById('lk_packunit').innerHTML = unitsForType(ing.measureType).map(u => `<option value="${u}">${unitLabel(ing.measureType, u)}</option>`).join('');
     document.getElementById('linkForm2').reset();
     document.getElementById('lk_cost').textContent = '—';
     document.getElementById('lk_status').textContent = '';
