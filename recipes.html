@@ -256,6 +256,7 @@
   let recipesAll = [];          // {id, name, type, yieldMeasureType, yieldAmount, yieldUnit, totalCost, costPerBase}
   let currentRecipe = null;
   let currentLines = [];
+  let editingSupplierLineId = null; // line whose Supplier cell is showing the picker
   let parsedRows = [];          // paste-importer review model
 
   const nrStatus = document.getElementById('nr_status');
@@ -635,6 +636,29 @@
     });
   }
 
+  // Supplier cell: a checkmark when the line is linked to a priced supplier
+  // (hover/title shows which one), a muted "+" when it isn't. Either is
+  // clickable and swaps in a picker of every priced supplier for that
+  // ingredient, plus an "unlinked" option.
+  function supplierCellHTML(l) {
+    if (l.componentType !== 'Ingredient') return '<span style="color:var(--muted);">—</span>';
+    if (editingSupplierLineId === l.id) {
+      const options = supplierIngredients.filter(s => s.ingredientId === l.componentId);
+      const optHtml = ['<option value="">Unlinked (no price)</option>']
+        .concat(options.map(o => `<option value="${o.id}" ${o.id === l.supplierId ? 'selected' : ''}>${supplierName(o.supplierId)} — ${fmtMoney2(o.costPerBase)}</option>`))
+        .join('');
+      return `<span style="display:flex; align-items:center; gap:4px;">
+        <select data-role="supplier-edit-select" data-id="${l.id}" style="max-width:200px;">${optHtml}</select>
+        <button type="button" class="secondary" data-role="cancel-edit-supplier" data-id="${l.id}" title="Cancel" style="margin:0; padding:2px 6px;">&times;</button>
+      </span>`;
+    }
+    const entry = supplierIngredients.find(s => s.id === l.supplierId);
+    if (entry) {
+      return `<button type="button" data-role="edit-supplier" data-id="${l.id}" title="Linked to ${supplierName(entry.supplierId)} — click to change" style="background:none; border:none; cursor:pointer; font-size:16px; color:var(--good); padding:0;">&#10003;</button>`;
+    }
+    return `<button type="button" data-role="edit-supplier" data-id="${l.id}" title="No supplier price linked — click to link" style="background:none; border:none; cursor:pointer; font-size:16px; color:var(--muted); padding:0;">&#43;</button>`;
+  }
+
   function renderLinesTable() {
     const table = document.getElementById('linesTable');
     const body = document.getElementById('linesBody');
@@ -646,7 +670,7 @@
         <td>${componentLink(l.componentType, l.componentId)}</td>
         <td>${l.componentType}</td>
         <td>${l.quantity} ${l.unit}</td>
-        <td>${l.supplierId ? supplierName(l.supplierId) : '—'}</td>
+        <td>${supplierCellHTML(l)}</td>
         <td>${fmtMoney2(l.lineCost)}</td>
         <td style="white-space:nowrap;">
           <button type="button" class="secondary" data-role="move-up" data-id="${l.id}" title="Move up" style="margin:0; padding:4px 8px;" ${i === 0 ? 'disabled' : ''}>&uarr;</button>
@@ -700,13 +724,46 @@
     }
   }
 
+  // Re-prices a single line against a manually chosen supplier (or unlinks it)
+  // and saves straight away — used by the Supplier column picker.
+  async function setLineSupplier(lineId, newSiId) {
+    const line = currentLines.find(l => l.id === lineId);
+    if (!line || !currentRecipe) return;
+    const ing = ingredientById(line.componentId);
+    const chosen = newSiId ? supplierIngredients.find(s => s.id === newSiId) : null;
+    const costPerBase = chosen ? chosen.costPerBase : 0;
+    const newLineCost = ing ? toBaseAmount(ing.measureType, line.quantity, line.unit) * costPerBase : 0;
+    const cfg = getStoredConfig();
+    setLnStatus('Saving...');
+    try {
+      await sheetsUpdateRange(
+        cfg.spreadsheetId, `RecipeLines!G${line.rowIndex + 1}:H${line.rowIndex + 1}`,
+        [[newSiId || '', newLineCost.toFixed(4)]], token, 'USER_ENTERED'
+      );
+      await recalcAndSaveRecipeCost(cfg);
+      editingSupplierLineId = null;
+      await refreshCurrentRecipe();
+      setLnStatus('Supplier updated.', 'ok');
+    } catch (err) {
+      setLnStatus('Error updating supplier: ' + err.message, 'error');
+    }
+  }
+
   document.getElementById('linesBody').addEventListener('click', (e) => {
     const up = e.target.closest('button[data-role="move-up"]');
     const down = e.target.closest('button[data-role="move-down"]');
     const rm = e.target.closest('button[data-role="remove-line"]');
+    const editSup = e.target.closest('button[data-role="edit-supplier"]');
+    const cancelSup = e.target.closest('button[data-role="cancel-edit-supplier"]');
     if (up) moveLine(up.dataset.id, -1);
     else if (down) moveLine(down.dataset.id, 1);
     else if (rm) removeLine(rm.dataset.id);
+    else if (editSup) { editingSupplierLineId = editSup.dataset.id; renderLinesTable(); }
+    else if (cancelSup) { editingSupplierLineId = null; renderLinesTable(); }
+  });
+  document.getElementById('linesBody').addEventListener('change', (e) => {
+    const sel = e.target.closest('select[data-role="supplier-edit-select"]');
+    if (sel) setLineSupplier(sel.dataset.id, sel.value);
   });
   bindComponentLinks(document.getElementById('linesBody'));
   bindComponentLinks(document.getElementById('scaleBody'));
