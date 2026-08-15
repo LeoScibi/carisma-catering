@@ -78,15 +78,7 @@
             <input id="sc_unit" disabled>
           </div>
         </div>
-        <p class="hint" id="sc_factor"></p>
-        <table id="scaleTable" style="display:none;">
-          <thead><tr><th>Component</th><th>Scaled quantity</th><th>Scaled line cost</th></tr></thead>
-          <tbody id="scaleBody"></tbody>
-        </table>
-        <p class="sub" id="scaleNone" style="display:none;">Add recipe lines first to see them scaled.</p>
-        <div class="totals" id="scaleTotals" style="display:none;">
-          <div class="line grand"><span>Scaled total cost</span><span id="sc_totalcost">£0.00</span></div>
-        </div>
+        <p class="hint" id="sc_factor">Recipe lines and the total cost below update live to this yield — nothing is saved until you edit a line directly.</p>
       </div>
 
       <div class="dialog-section">
@@ -257,6 +249,7 @@
   let currentRecipe = null;
   let currentLines = [];
   let editingSupplierLineId = null; // line whose Supplier cell is showing the picker
+  let editingQtyLineId = null;      // line whose Quantity cell is showing the qty/unit editor
   let parsedRows = [];          // paste-importer review model
 
   const nrStatus = document.getElementById('nr_status');
@@ -413,53 +406,33 @@
     document.getElementById('rd_title').textContent = currentRecipe.name;
     document.getElementById('rd_type').textContent = currentRecipe.type;
     document.getElementById('rd_yield').textContent = `Yields ${currentRecipe.yieldAmount} ${currentRecipe.yieldUnit}`;
-    document.getElementById('rd_totalcost').textContent = fmtMoney2(currentRecipe.totalCost);
     document.getElementById('rd_costperbase').textContent = `${fmtMoney2(currentRecipe.costPerBase)} per ${baseUnitFor(currentRecipe.yieldMeasureType)}`;
     document.getElementById('sc_target').value = currentRecipe.yieldAmount;
     document.getElementById('sc_unit').value = currentRecipe.yieldUnit;
     renderScale();
   }
 
-  // ---------- Scale this recipe (view-only — nothing is written to the sheet) ----------
+  // ---------- Scale this recipe ----------
+  // View-only: scales what's shown in Recipe lines below (quantities, line
+  // costs, total) by ×(target yield / actual yield). Nothing is written to
+  // the sheet — editing a line always acts on its real, unscaled amount.
   function fmtQty(n) { return isFinite(n) ? +n.toFixed(2) : 0; }
+  let currentScaleFactor = 1;
 
   function renderScale() {
     if (!currentRecipe) return;
-    const table = document.getElementById('scaleTable');
-    const body = document.getElementById('scaleBody');
-    const none = document.getElementById('scaleNone');
-    const totalsBox = document.getElementById('scaleTotals');
     const factorNote = document.getElementById('sc_factor');
     const target = parseFloat(document.getElementById('sc_target').value);
-
-    if (!currentLines.length) {
-      table.style.display = 'none'; totalsBox.style.display = 'none'; none.style.display = 'block';
-      factorNote.textContent = '';
-      return;
-    }
-    none.style.display = 'none';
-
     if (!target || !currentRecipe.yieldAmount) {
-      table.style.display = 'none'; totalsBox.style.display = 'none';
+      currentScaleFactor = 1;
       factorNote.textContent = 'Enter a target yield above to scale.';
-      return;
+    } else {
+      currentScaleFactor = target / currentRecipe.yieldAmount;
+      factorNote.textContent = currentScaleFactor === 1 ? 'Recipe lines and the total cost below update live to this yield.'
+        : `${currentRecipe.yieldAmount} ${currentRecipe.yieldUnit} → ${target} ${currentRecipe.yieldUnit} = ×${fmtQty(currentScaleFactor)}`;
     }
-
-    const factor = target / currentRecipe.yieldAmount;
-    factorNote.textContent = `${currentRecipe.yieldAmount} ${currentRecipe.yieldUnit} → ${target} ${currentRecipe.yieldUnit} = ×${fmtQty(factor)}`;
-
-    body.innerHTML = currentLines.map(l => `
-      <tr>
-        <td>${componentLink(l.componentType, l.componentId)}</td>
-        <td>${fmtQty(l.quantity * factor)} ${l.unit}</td>
-        <td>${fmtMoney2(l.lineCost * factor)}</td>
-      </tr>
-    `).join('');
-    table.style.display = 'table';
-
-    const scaledTotal = currentLines.reduce((sum, l) => sum + l.lineCost * factor, 0);
-    document.getElementById('sc_totalcost').textContent = fmtMoney2(scaledTotal);
-    totalsBox.style.display = 'block';
+    document.getElementById('rd_totalcost').textContent = fmtMoney2(currentRecipe.totalCost * currentScaleFactor);
+    renderLinesTable();
   }
   document.getElementById('sc_target').addEventListener('input', renderScale);
 
@@ -599,7 +572,6 @@
         };
       });
     currentLines.sort((a, b) => a.sortOrder - b.sortOrder);
-    renderLinesTable();
     renderScale();
   }
 
@@ -623,7 +595,6 @@
   function onIngredientChanged() {
     loadIngredients().then(() => {
       if (!currentRecipe) return;
-      renderLinesTable();
       renderScale();
       refreshComponentOptions();
     });
@@ -660,19 +631,62 @@
     return `<button type="button" data-role="edit-supplier" data-id="${l.id}" title="No supplier price linked — click to link" style="background:none; border:none; cursor:pointer; font-size:16px; color:var(--muted); padding:0;">&#43;</button>`;
   }
 
+  // The ingredient's (or sub-recipe's) fixed measure family for a line — this
+  // is what bounds the unit choices in the quantity editor below, so a line
+  // can only ever move between units of its own family (e.g. g <-> tsp), never
+  // across families.
+  function componentMeasureType(l) {
+    if (l.componentType === 'Ingredient') { const ing = ingredientById(l.componentId); return ing ? ing.measureType : ''; }
+    const ref = recipesAll.find(r => r.id === l.componentId);
+    return ref ? ref.yieldMeasureType : '';
+  }
+
+  // Current cost-per-base-unit for a line's already-linked supplier (or
+  // sub-recipe) — used to re-price a line after its quantity/unit changes.
+  function lineCostPerBase(l) {
+    if (l.componentType === 'Ingredient') {
+      const chosen = l.supplierId ? supplierIngredients.find(s => s.id === l.supplierId) : null;
+      return chosen ? chosen.costPerBase : 0;
+    }
+    const ref = recipesAll.find(r => r.id === l.componentId);
+    return ref ? (ref.costPerBase || 0) : 0;
+  }
+
+  // Quantity cell: clickable text that swaps in a qty input + a unit picker
+  // scoped to the component's own measure family (so g can become tsp, but
+  // never L). Always edits the line's real, unscaled amount, even when a
+  // scale factor is currently being viewed.
+  function quantityCellHTML(l, factor) {
+    if (editingQtyLineId === l.id) {
+      const measureType = componentMeasureType(l);
+      const unitOpts = unitsForType(measureType).map(u => `<option value="${u}" ${u === l.unit ? 'selected' : ''}>${unitLabel(measureType, u)}</option>`).join('');
+      return `<span style="display:flex; flex-direction:column; gap:2px;">
+        <span style="display:flex; align-items:center; gap:4px;">
+          <input type="number" step="0.01" min="0" data-role="qty-edit-input" data-id="${l.id}" value="${l.quantity}" style="width:70px;">
+          <select data-role="qty-edit-unit" data-id="${l.id}">${unitOpts}</select>
+          <button type="button" data-role="save-qty" data-id="${l.id}" title="Save" style="margin:0; padding:2px 6px;">&#10003;</button>
+          <button type="button" class="secondary" data-role="cancel-edit-qty" data-id="${l.id}" title="Cancel" style="margin:0; padding:2px 6px;">&times;</button>
+        </span>
+        ${factor !== 1 ? '<span style="font-size:11px; color:var(--muted);">Editing the base amount, not the scaled view</span>' : ''}
+      </span>`;
+    }
+    return `<button type="button" data-role="edit-qty" data-id="${l.id}" title="Click to change quantity or unit" style="background:none; border:none; cursor:pointer; padding:0; font:inherit; text-decoration:underline dotted; color:inherit;">${fmtQty(l.quantity * factor)} ${l.unit}</button>`;
+  }
+
   function renderLinesTable() {
     const table = document.getElementById('linesTable');
     const body = document.getElementById('linesBody');
     const none = document.getElementById('noLines');
     if (!currentLines.length) { table.style.display = 'none'; body.innerHTML = ''; none.style.display = 'block'; return; }
     none.style.display = 'none';
+    const factor = currentScaleFactor;
     body.innerHTML = currentLines.map((l, i) => `
       <tr>
         <td>${componentLink(l.componentType, l.componentId)}</td>
         <td>${l.componentType}</td>
-        <td>${l.quantity} ${l.unit}</td>
+        <td>${quantityCellHTML(l, factor)}</td>
         <td>${supplierCellHTML(l)}</td>
-        <td>${fmtMoney2(l.lineCost)}</td>
+        <td>${fmtMoney2(l.lineCost * factor)}</td>
         <td style="white-space:nowrap;">
           <button type="button" class="secondary" data-role="move-up" data-id="${l.id}" title="Move up" style="margin:0; padding:4px 8px;" ${i === 0 ? 'disabled' : ''}>&uarr;</button>
           <button type="button" class="secondary" data-role="move-down" data-id="${l.id}" title="Move down" style="margin:0; padding:4px 8px;" ${i === currentLines.length - 1 ? 'disabled' : ''}>&darr;</button>
@@ -750,24 +764,65 @@
     }
   }
 
+  // Re-prices a single line against a new quantity/unit (within the same
+  // measure family) and saves straight away — used by the Quantity column editor.
+  async function setLineQuantity(lineId, newQty, newUnit) {
+    const line = currentLines.find(l => l.id === lineId);
+    if (!line || !currentRecipe) return;
+    if (!newQty || newQty <= 0 || !newUnit) { setLnStatus('Enter a valid quantity and unit.', 'error'); return; }
+    const measureType = componentMeasureType(line);
+    const newLineCost = measureType ? toBaseAmount(measureType, newQty, newUnit) * lineCostPerBase(line) : 0;
+    const cfg = getStoredConfig();
+    setLnStatus('Saving...');
+    try {
+      await sheetsUpdateRange(
+        cfg.spreadsheetId, `RecipeLines!E${line.rowIndex + 1}:H${line.rowIndex + 1}`,
+        [[newQty, newUnit, line.supplierId || '', newLineCost.toFixed(4)]], token, 'USER_ENTERED'
+      );
+      await recalcAndSaveRecipeCost(cfg);
+      editingQtyLineId = null;
+      await refreshCurrentRecipe();
+      setLnStatus('Quantity updated.', 'ok');
+    } catch (err) {
+      setLnStatus('Error updating quantity: ' + err.message, 'error');
+    }
+  }
+
+  function saveQtyFromInputs(lineId) {
+    const input = document.querySelector(`input[data-role="qty-edit-input"][data-id="${lineId}"]`);
+    const unitSel = document.querySelector(`select[data-role="qty-edit-unit"][data-id="${lineId}"]`);
+    if (input && unitSel) setLineQuantity(lineId, parseFloat(input.value), unitSel.value);
+  }
+
   document.getElementById('linesBody').addEventListener('click', (e) => {
     const up = e.target.closest('button[data-role="move-up"]');
     const down = e.target.closest('button[data-role="move-down"]');
     const rm = e.target.closest('button[data-role="remove-line"]');
     const editSup = e.target.closest('button[data-role="edit-supplier"]');
     const cancelSup = e.target.closest('button[data-role="cancel-edit-supplier"]');
+    const editQty = e.target.closest('button[data-role="edit-qty"]');
+    const cancelQty = e.target.closest('button[data-role="cancel-edit-qty"]');
+    const saveQty = e.target.closest('button[data-role="save-qty"]');
     if (up) moveLine(up.dataset.id, -1);
     else if (down) moveLine(down.dataset.id, 1);
     else if (rm) removeLine(rm.dataset.id);
     else if (editSup) { editingSupplierLineId = editSup.dataset.id; renderLinesTable(); }
     else if (cancelSup) { editingSupplierLineId = null; renderLinesTable(); }
+    else if (editQty) { editingQtyLineId = editQty.dataset.id; renderLinesTable(); }
+    else if (cancelQty) { editingQtyLineId = null; renderLinesTable(); }
+    else if (saveQty) saveQtyFromInputs(saveQty.dataset.id);
   });
   document.getElementById('linesBody').addEventListener('change', (e) => {
     const sel = e.target.closest('select[data-role="supplier-edit-select"]');
     if (sel) setLineSupplier(sel.dataset.id, sel.value);
   });
+  document.getElementById('linesBody').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && e.target.matches('input[data-role="qty-edit-input"]')) {
+      e.preventDefault();
+      saveQtyFromInputs(e.target.dataset.id);
+    }
+  });
   bindComponentLinks(document.getElementById('linesBody'));
-  bindComponentLinks(document.getElementById('scaleBody'));
 
   // Sums RecipeLines for currentRecipe and writes Total + Cost per base back to the Recipes row.
   async function recalcAndSaveRecipeCost(cfg) {
