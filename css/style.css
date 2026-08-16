@@ -437,6 +437,63 @@ dialog::backdrop { background: rgba(31,58,43,0.35); }
 #recipeDialog { max-width: 720px; }
 #pasteDialog { max-width: 880px; }
 
+/* Recipe lines: drag-to-reorder handle, inline component swap, and the
+   trailing type-to-add row (see recipes.html renderLinesTable/newRowHTML). */
+#linesTable td.drag-col { width: 20px; padding: 10px 0 10px 8px; }
+.drag-handle { cursor: grab; color: var(--textMuted2); font-family: var(--mono); font-size: 12px; line-height: 1; user-select: none; }
+.drag-handle:active { cursor: grabbing; }
+#linesBody tr.dragging { opacity: 0.4; }
+#linesBody tr.drop-above { box-shadow: inset 0 2px 0 0 var(--green600); }
+#linesBody tr.drop-below { box-shadow: inset 0 -2px 0 0 var(--green600); }
+
+/* Subtle flag for an ingredient line with no priced supplier currently linked. */
+#linesBody tr.line-unlinked td { background: rgba(181, 83, 42, 0.05); }
+#linesBody tr.line-unlinked:hover td { background: rgba(181, 83, 42, 0.09); }
+
+.search-wrap { position: relative; display: inline-block; width: 100%; }
+.row-input, .row-select {
+  border: 1px solid transparent;
+  background: transparent;
+  box-shadow: none;
+  padding: 6px 7px;
+  margin-top: 0;
+  height: auto;
+  font-size: 13.5px;
+  border-radius: var(--rSm);
+  font-family: var(--sans);
+  color: var(--textDark);
+  width: 100%;
+}
+.row-input::placeholder { color: var(--textMuted2); }
+.row-input:focus, .row-select:focus {
+  outline: none;
+  border-color: var(--green600);
+  background: #FFFFFF;
+  box-shadow: 0 0 0 3px rgba(74,122,87,0.12);
+}
+.row-select { border-color: var(--line); background: #FFFFFF; width: auto; min-width: 64px; }
+.qty-cell { display: flex; gap: 6px; align-items: center; }
+.qty-cell input.row-input { width: 68px; flex: none; }
+
+.search-dropdown {
+  position: absolute;
+  left: 0; right: 0; top: calc(100% + 4px);
+  background: var(--paper);
+  border: 1px solid var(--lineStrong);
+  border-radius: var(--rMd);
+  box-shadow: var(--shadowMd);
+  max-height: 220px;
+  overflow-y: auto;
+  z-index: 30;
+}
+.search-option { padding: 8px 12px; font-size: 13px; cursor: pointer; display: flex; justify-content: space-between; gap: 10px; align-items: baseline; }
+.search-option .name { color: var(--textDark); }
+.search-option .tag { font-family: var(--mono); font-size: 9px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--textMuted2); flex-shrink: 0; }
+.search-option:hover, .search-option.active { background: var(--paper2); }
+.search-empty { padding: 10px 12px; font-size: 12.5px; color: var(--textMuted2); }
+
+#linesBody tr.new-row td { border-bottom: none; }
+
 /* Inline dietary checkboxes */
 .checks { display: flex; gap: 18px; flex-wrap: wrap; margin-top: 14px; }
 .checks label {

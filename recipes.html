@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300;9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=6">
+<link rel="stylesheet" href="css/style.css?v=7">
 </head>
 <body>
 
@@ -85,52 +85,17 @@
       </div>
 
       <div class="dialog-section">
-        <h3>Add a single line</h3>
-        <form id="lineForm">
-          <div class="field-row">
-            <div>
-              <label style="margin-top:0;">Component type *</label>
-              <select id="ln_componenttype" required>
-                <option value="Ingredient">Ingredient</option>
-                <option value="Recipe">Recipe (sub-recipe)</option>
-              </select>
-            </div>
-            <div>
-              <label style="margin-top:0;">Component *</label>
-              <select id="ln_component" required><option value="">Choose component type first</option></select>
-            </div>
-          </div>
-          <div class="field-row three">
-            <div><label>Quantity *</label><input id="ln_quantity" type="number" step="0.01" min="0" required></div>
-            <div>
-              <label>Unit *</label>
-              <select id="ln_unit" required><option value="">Choose component first</option></select>
-            </div>
-            <div id="ln_supplierWrap">
-              <label>Supplier</label>
-              <select id="ln_supplier"><option value="">Choose component first</option></select>
-            </div>
-          </div>
-          <div class="totals">
-            <div class="line"><span>Line cost</span><span id="ln_linecost">—</span></div>
-          </div>
-          <button type="submit" id="ln_addBtn">Add line to recipe</button>
-        </form>
-        <div id="ln_status" class="status-line"></div>
-      </div>
-
-      <div class="dialog-section">
         <div style="display:flex; align-items:center; justify-content:space-between; gap:12px;">
-          <h3 style="margin:0;">Recipe lines</h3>
+          <h3 style="margin-top:0;">Recipe lines</h3>
           <button type="button" id="refreshCostsBtn" class="secondary" style="margin:0;">Refresh costs</button>
         </div>
-        <p class="sub">Line costs are captured when a line is added. If you add or change a supplier price afterwards, use "Refresh costs" to re-price existing lines.</p>
+        <p class="sub">Type in the last row to add an ingredient or sub-recipe — it saves as soon as you set a quantity. Drag the handle to reorder, or use swap to replace a component in place. Line costs are captured when a line is added; if you add or change a supplier price afterwards, use "Refresh costs" to re-price existing lines.</p>
         <div id="refreshCostsStatus" class="status-line"></div>
-        <table id="linesTable" style="display:none;">
-          <thead><tr><th>Component</th><th>Quantity</th><th>Supplier</th><th class="num">Line cost</th><th></th></tr></thead>
+        <table id="linesTable">
+          <thead><tr><th></th><th>Component</th><th>Quantity</th><th>Supplier</th><th class="num">Line cost</th><th></th></tr></thead>
           <tbody id="linesBody"></tbody>
         </table>
-        <p class="sub" id="noLines" style="display:none;">No lines yet — add one above or paste a recipe.</p>
+        <div id="ln_status" class="status-line"></div>
       </div>
       </div>
     </dialog>
@@ -254,6 +219,10 @@
   let currentLines = [];
   let editingSupplierLineId = null; // line whose Supplier cell is showing the picker
   let editingQtyLineId = null;      // line whose Quantity cell is showing the qty/unit editor
+  let editingComponentLineId = null; // line whose Component cell is showing the swap search
+  let swapQuery = '';                // swap: current search text for the line being swapped
+  let draggingLineId = null;         // line currently being dragged to reorder
+  let newLine = { query: '', pick: null, qty: '', unit: '', supplierId: '' }; // trailing empty add-row
   let parsedRows = [];          // paste-importer review model
 
   const nrStatus = document.getElementById('nr_status');
@@ -351,8 +320,9 @@
   function openRecipe(id) {
     currentRecipe = recipesAll.find(r => r.id === id) || null;
     if (!currentRecipe) return;
+    editingComponentLineId = null;
+    newLine = { query: '', pick: null, qty: '', unit: '', supplierId: '' };
     renderRecipeDetail();
-    refreshComponentOptions();
     if (!recipeDialog.open) recipeDialog.showModal();
     loadLines();
   }
@@ -441,118 +411,108 @@
   }
   document.getElementById('sc_target').addEventListener('input', renderScale);
 
-  // ---------- Manual single-line builder ----------
-  document.getElementById('ln_componenttype').addEventListener('change', refreshComponentOptions);
-  document.getElementById('ln_component').addEventListener('change', refreshUnitAndSupplierOptions);
-  document.getElementById('ln_quantity').addEventListener('input', recalcLineCost);
-  document.getElementById('ln_unit').addEventListener('change', recalcLineCost);
-  document.getElementById('ln_supplier').addEventListener('change', recalcLineCost);
-
-  function refreshComponentOptions() {
-    if (!currentRecipe) return;
-    const type = document.getElementById('ln_componenttype').value;
-    const sel = document.getElementById('ln_component');
-    if (type === 'Ingredient') {
-      sel.innerHTML = ingredients.length
-        ? ingredients.map(i => `<option value="${i.id}">${i.name} (${i.measureType})</option>`).join('')
-        : '<option value="">No ingredients yet</option>';
-    } else {
-      const options = recipesAll.filter(r => r.id !== currentRecipe.id);
-      sel.innerHTML = options.length
-        ? options.map(r => `<option value="${r.id}">${r.name} (${r.type}, ${r.yieldMeasureType})</option>`).join('')
-        : '<option value="">No other recipes yet</option>';
-    }
-    refreshUnitAndSupplierOptions();
+  // ---------- Component search (shared by the trailing add-row and swap) ----------
+  // A component is either an ingredient or any other recipe — this file's existing
+  // convention (see the old manual builder / paste importer) treats both the same way.
+  function searchableComponents() {
+    const ingredientItems = ingredients.map(i => ({ type: 'Ingredient', id: i.id, name: i.name, measureType: i.measureType }));
+    const recipeItems = recipesAll
+      .filter(r => !currentRecipe || r.id !== currentRecipe.id)
+      .map(r => ({ type: 'Recipe', id: r.id, name: r.name, measureType: r.yieldMeasureType }));
+    return ingredientItems.concat(recipeItems);
+  }
+  function filterComponents(query) {
+    const q = query.trim().toLowerCase();
+    if (!q) return [];
+    return searchableComponents().filter(c => c.name.toLowerCase().includes(q)).slice(0, 8);
+  }
+  function searchOptionsHTML(results) {
+    if (!results.length) return '<div class="search-empty">No matches</div>';
+    return results.map((r, i) => `<div class="search-option" data-idx="${i}"><span class="name">${r.name}</span><span class="tag">${r.type === 'Ingredient' ? 'Ingredient' : 'Sub-recipe'}</span></div>`).join('');
   }
 
-  function currentComponent() {
-    const type = document.getElementById('ln_componenttype').value;
-    const id = document.getElementById('ln_component').value;
-    if (type === 'Ingredient') { const ref = ingredientById(id); return { type, measureType: ref ? ref.measureType : '', ref }; }
-    const ref = recipesAll.find(r => r.id === id) || null;
-    return { type, measureType: ref ? ref.yieldMeasureType : '', ref };
-  }
-
-  function refreshUnitAndSupplierOptions() {
-    const comp = currentComponent();
-    const unitSel = document.getElementById('ln_unit');
-    const supWrap = document.getElementById('ln_supplierWrap');
-    const supSel = document.getElementById('ln_supplier');
-    if (!comp.ref || !comp.measureType) {
-      unitSel.innerHTML = '<option value="">Choose component first</option>';
-      supSel.innerHTML = '<option value="">—</option>';
-      recalcLineCost(); return;
-    }
-    unitSel.innerHTML = unitsForType(comp.measureType).map(u => `<option value="${u}">${unitLabel(comp.measureType, u)}</option>`).join('');
+  // Cost helpers for a {type,id,measureType} component that isn't (yet) a saved
+  // line — mirrors lineCostPerBase()'s convention: no supplier price yet costs £0
+  // rather than blocking, same as the rest of this file.
+  function costPerBaseForComponent(comp, supplierId) {
+    if (!comp) return null;
     if (comp.type === 'Ingredient') {
-      supWrap.style.display = 'block';
-      const options = supplierIngredients.filter(s => s.ingredientId === comp.ref.id);
-      if (!options.length) {
-        supSel.innerHTML = '<option value="">No supplier price set for this ingredient yet</option>';
+      const chosen = supplierId ? supplierIngredients.find(s => s.id === supplierId) : null;
+      return chosen ? chosen.costPerBase : 0;
+    }
+    const ref = recipesAll.find(r => r.id === comp.id);
+    return ref ? (ref.costPerBase || 0) : 0;
+  }
+  function computeLineCost(comp, qty, unit, supplierId) {
+    if (!comp || !qty || !unit) return null;
+    const costPerBase = costPerBaseForComponent(comp, supplierId);
+    if (costPerBase === null) return null;
+    return toBaseAmount(comp.measureType, qty, unit) * costPerBase;
+  }
+
+  // Component cell: normally the clickable name; swapped in for a search box +
+  // dropdown while this line is mid-swap (see the "swap-line" button below).
+  function componentCellHTML(l) {
+    if (editingComponentLineId === l.id) {
+      return `<span class="search-wrap">
+          <input type="text" class="row-input" data-role="swap-search" data-id="${l.id}" placeholder="Search replacement…" autocomplete="off" value="${escapeAttr(swapQuery)}">
+          <div class="search-dropdown" data-role="swap-dropdown" data-id="${l.id}" hidden></div>
+        </span>
+        <button type="button" class="secondary" data-role="cancel-swap" data-id="${l.id}" title="Cancel" style="margin:4px 0 0; padding:2px 6px;">&times;</button>`;
+    }
+    return `${componentLink(l.componentType, l.componentId)}<span class="cell-sub">${l.componentType}</span>`;
+  }
+
+  // Trailing empty row: search box first; once a component is picked, quantity/unit
+  // (and supplier, for ingredients) appear inline and it saves itself as soon as a
+  // valid quantity is set (see attemptCommitNewLine / commitNewLine below).
+  function newRowHTML() {
+    const pick = newLine.pick;
+    const nameCell = pick
+      ? `<span class="cell-main">${pick.name}</span><span class="cell-sub">${pick.type === 'Ingredient' ? 'Ingredient' : 'Sub-recipe'}</span>`
+      : `<span class="search-wrap">
+          <input type="text" class="row-input" data-role="new-line-search" placeholder="Add ingredient or sub-recipe…" autocomplete="off" value="${escapeAttr(newLine.query)}">
+          <div class="search-dropdown" data-role="new-line-dropdown" hidden></div>
+        </span>`;
+
+    let qtyCell = '', supCell = '';
+    if (pick) {
+      const unitOpts = unitsForType(pick.measureType).map(u => `<option value="${u}" ${u === newLine.unit ? 'selected' : ''}>${unitLabel(pick.measureType, u)}</option>`).join('');
+      qtyCell = `<span class="qty-cell">
+        <input type="number" step="0.01" min="0" class="row-input" data-role="new-line-qty" value="${newLine.qty}" placeholder="Qty">
+        <select class="row-select" data-role="new-line-unit">${unitOpts}</select>
+      </span>`;
+      if (pick.type === 'Ingredient') {
+        const opts = supplierIngredients.filter(s => s.ingredientId === pick.id);
+        const cheap = cheapestSupplierFor(pick.id);
+        supCell = opts.length
+          ? `<select class="row-select" data-role="new-line-supplier">` + opts.map(o =>
+              `<option value="${o.id}" ${o.id === newLine.supplierId ? 'selected' : ''}>${supplierName(o.supplierId)} — ${fmtMoney2(o.costPerBase)}${cheap && o.id === cheap.id ? ' (cheapest)' : ''}</option>`
+            ).join('') + '</select>'
+          : '<span style="color:var(--muted); font-size:12px;">No price yet</span>';
       } else {
-        const cheapest = cheapestSupplierFor(comp.ref.id);
-        supSel.innerHTML = options.map(o => {
-          const isCheapest = cheapest && o.id === cheapest.id;
-          return `<option value="${o.id}" ${isCheapest ? 'selected' : ''}>${supplierName(o.supplierId)} — ${fmtMoney2(o.costPerBase)}/${baseUnitFor(comp.measureType)}${isCheapest ? ' (cheapest)' : ''}</option>`;
-        }).join('');
+        supCell = '<span style="color:var(--muted);">—</span>';
       }
-    } else {
-      supWrap.style.display = 'none';
-      supSel.innerHTML = '<option value="">—</option>';
     }
-    recalcLineCost();
+
+    const preview = pick ? computeLineCost(pick, parseFloat(newLine.qty) || 0, newLine.unit, newLine.supplierId) : null;
+    const clearBtn = pick ? `<button type="button" class="secondary" data-role="new-line-clear" title="Clear" style="margin:0; padding:4px 8px;">&times;</button>` : '';
+
+    return `<tr class="new-row">
+      <td></td>
+      <td>${nameCell}</td>
+      <td>${qtyCell}</td>
+      <td>${supCell}</td>
+      <td class="num">${preview === null ? '—' : fmtMoney2(preview)}</td>
+      <td>${clearBtn}</td>
+    </tr>`;
   }
-
-  function costPerBaseForSelection() {
-    const comp = currentComponent();
-    if (!comp.ref) return null;
-    if (comp.type === 'Ingredient') {
-      const chosen = supplierIngredients.find(s => s.id === document.getElementById('ln_supplier').value);
-      return chosen ? chosen.costPerBase : 0; // no supplier price yet -> line costs £0 until one is linked
-    }
-    return comp.ref.costPerBase || 0;
+  function updateNewLinePreview() {
+    const row = document.querySelector('#linesBody tr.new-row');
+    if (!row) return;
+    const preview = newLine.pick ? computeLineCost(newLine.pick, parseFloat(newLine.qty) || 0, newLine.unit, newLine.supplierId) : null;
+    row.children[4].textContent = preview === null ? '—' : fmtMoney2(preview);
   }
-
-  function recalcLineCost() {
-    const comp = currentComponent();
-    const qty = parseFloat(document.getElementById('ln_quantity').value);
-    const unit = document.getElementById('ln_unit').value;
-    const box = document.getElementById('ln_linecost');
-    const costPerBase = costPerBaseForSelection();
-    if (!comp.ref || !qty || !unit || costPerBase === null) { box.textContent = '—'; return null; }
-    const lineCost = toBaseAmount(comp.measureType, qty, unit) * costPerBase;
-    box.textContent = fmtMoney2(lineCost);
-    return lineCost;
-  }
-
-  document.getElementById('lineForm').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    if (!requireAuth() || !currentRecipe) return;
-    const comp = currentComponent();
-    const qty = parseFloat(document.getElementById('ln_quantity').value);
-    const unit = document.getElementById('ln_unit').value;
-    const supplierId = document.getElementById('ln_supplier').value || '';
-    if (!comp.ref || !qty || !unit) { setLnStatus('Component, quantity, and unit are required.', 'error'); return; }
-    const lineCost = recalcLineCost();
-    if (lineCost === null) { setLnStatus('Could not calculate line cost — check the values.', 'error'); return; }
-
-    const cfg = getStoredConfig();
-    setLnStatus('Adding line...');
-    try {
-      const existingRL = await sheetsGet(cfg.spreadsheetId, RL_RANGE, token);
-      const rlRows = existingRL.length ? existingRL : [RL_HEADERS];
-      const lineId = nextId(rlRows, 'RL');
-      const row = [lineId, currentRecipe.id, comp.type, comp.ref.id, qty, unit, supplierId, lineCost.toFixed(4), nextSortOrder()];
-      await sheetsAppend(cfg.spreadsheetId, RL_RANGE, row, token);
-      await recalcAndSaveRecipeCost(cfg);
-      await refreshCurrentRecipe();
-      document.getElementById('ln_quantity').value = '';
-      document.getElementById('ln_linecost').textContent = '—';
-      setLnStatus('Line added.', 'ok');
-    } catch (err) {
-      setLnStatus('Error: ' + err.message, 'error');
-    }
-  });
 
   async function loadLines() {
     const cfg = getStoredConfig();
@@ -601,7 +561,6 @@
     loadIngredients().then(() => {
       if (!currentRecipe) return;
       renderScale();
-      refreshComponentOptions();
     });
   }
   function bindComponentLinks(container) {
@@ -681,41 +640,50 @@
   function renderLinesTable() {
     const table = document.getElementById('linesTable');
     const body = document.getElementById('linesBody');
-    const none = document.getElementById('noLines');
-    if (!currentLines.length) { table.style.display = 'none'; body.innerHTML = ''; none.style.display = 'block'; return; }
-    none.style.display = 'none';
     const factor = currentScaleFactor;
-    body.innerHTML = currentLines.map((l, i) => {
+    const rowsHtml = currentLines.map((l) => {
       const rateUnit = baseUnitFor(componentMeasureType(l));
+      // "Not linked": an ingredient line with no priced supplier currently selected —
+      // same condition supplierCellHTML uses to decide the checkmark vs "+" icon.
+      const unlinked = l.componentType === 'Ingredient' && !supplierIngredients.find(s => s.id === l.supplierId);
+      const draggable = editingComponentLineId === l.id ? 'false' : 'true';
       return `
-      <tr>
-        <td>${componentLink(l.componentType, l.componentId)}<span class="cell-sub">${l.componentType}</span></td>
+      <tr class="${unlinked ? 'line-unlinked' : ''}" draggable="${draggable}" data-id="${l.id}">
+        <td class="drag-col"><span class="drag-handle" title="Drag to reorder">&#8942;&#8942;</span></td>
+        <td>${componentCellHTML(l)}</td>
         <td>${quantityCellHTML(l, factor)}</td>
         <td>${supplierCellHTML(l)}</td>
         <td class="num"><span class="cell-main">${fmtMoney2(l.lineCost * factor)}</span>${rateUnit ? `<span class="cell-sub">${fmtMoney2(lineCostPerBase(l))} per ${rateUnit}</span>` : ''}</td>
         <td style="white-space:nowrap;">
-          <button type="button" class="secondary" data-role="move-up" data-id="${l.id}" title="Move up" style="margin:0; padding:4px 8px;" ${i === 0 ? 'disabled' : ''}>&uarr;</button>
-          <button type="button" class="secondary" data-role="move-down" data-id="${l.id}" title="Move down" style="margin:0; padding:4px 8px;" ${i === currentLines.length - 1 ? 'disabled' : ''}>&darr;</button>
+          <button type="button" class="secondary" data-role="swap-line" data-id="${l.id}" title="Swap component" style="margin:0; padding:4px 8px;">&#8646;</button>
           <button type="button" class="secondary danger" data-role="remove-line" data-id="${l.id}" title="Remove" style="margin:0; padding:4px 8px;">&times;</button>
         </td>
       </tr>`;
     }).join('');
+    body.innerHTML = rowsHtml + newRowHTML();
     table.style.display = 'table';
   }
 
-  // Swaps this line's SORT ORDER with its neighbour's (direction -1 = up, +1 = down).
-  async function moveLine(lineId, direction) {
-    const idx = currentLines.findIndex(l => l.id === lineId);
-    const swapIdx = idx + direction;
-    if (idx === -1 || swapIdx < 0 || swapIdx >= currentLines.length) return;
-    const a = currentLines[idx], b = currentLines[swapIdx];
+  // Reassigns SORT ORDER for every line so `sourceId` lands immediately before/after
+  // `targetId`; only rows whose order value actually changed get written back.
+  async function reorderLine(sourceId, targetId, before) {
+    if (sourceId === targetId) return;
+    const order = currentLines.map(l => l.id).filter(id => id !== sourceId);
+    const targetIdx = order.indexOf(targetId);
+    if (targetIdx === -1) return;
+    order.splice(before ? targetIdx : targetIdx + 1, 0, sourceId);
     const cfg = getStoredConfig();
     setLnStatus('Reordering...');
     try {
-      await Promise.all([
-        sheetsUpdateRange(cfg.spreadsheetId, `RecipeLines!I${a.rowIndex + 1}:I${a.rowIndex + 1}`, [[b.sortOrder]], token, 'RAW'),
-        sheetsUpdateRange(cfg.spreadsheetId, `RecipeLines!I${b.rowIndex + 1}:I${b.rowIndex + 1}`, [[a.sortOrder]], token, 'RAW')
-      ]);
+      const updates = [];
+      order.forEach((id, i) => {
+        const line = currentLines.find(l => l.id === id);
+        const newOrder = i + 1;
+        if (line && line.sortOrder !== newOrder) {
+          updates.push(sheetsUpdateRange(cfg.spreadsheetId, `RecipeLines!I${line.rowIndex + 1}:I${line.rowIndex + 1}`, [[newOrder]], token, 'RAW'));
+        }
+      });
+      await Promise.all(updates);
       await loadLines();
       setLnStatus('');
     } catch (err) {
@@ -801,34 +769,206 @@
   }
 
   document.getElementById('linesBody').addEventListener('click', (e) => {
-    const up = e.target.closest('button[data-role="move-up"]');
-    const down = e.target.closest('button[data-role="move-down"]');
     const rm = e.target.closest('button[data-role="remove-line"]');
     const editSup = e.target.closest('button[data-role="edit-supplier"]');
     const cancelSup = e.target.closest('button[data-role="cancel-edit-supplier"]');
     const editQty = e.target.closest('button[data-role="edit-qty"]');
     const cancelQty = e.target.closest('button[data-role="cancel-edit-qty"]');
     const saveQty = e.target.closest('button[data-role="save-qty"]');
-    if (up) moveLine(up.dataset.id, -1);
-    else if (down) moveLine(down.dataset.id, 1);
-    else if (rm) removeLine(rm.dataset.id);
+    const swapBtn = e.target.closest('button[data-role="swap-line"]');
+    const cancelSwap = e.target.closest('button[data-role="cancel-swap"]');
+    const swapOpt = e.target.closest('.search-dropdown[data-role="swap-dropdown"] .search-option');
+    const newOpt = e.target.closest('.search-dropdown[data-role="new-line-dropdown"] .search-option');
+    const clearNew = e.target.closest('button[data-role="new-line-clear"]');
+    if (rm) removeLine(rm.dataset.id);
     else if (editSup) { editingSupplierLineId = editSup.dataset.id; renderLinesTable(); }
     else if (cancelSup) { editingSupplierLineId = null; renderLinesTable(); }
     else if (editQty) { editingQtyLineId = editQty.dataset.id; renderLinesTable(); }
     else if (cancelQty) { editingQtyLineId = null; renderLinesTable(); }
     else if (saveQty) saveQtyFromInputs(saveQty.dataset.id);
+    else if (swapBtn) {
+      editingComponentLineId = swapBtn.dataset.id;
+      swapQuery = '';
+      renderLinesTable();
+      const input = document.querySelector(`input[data-role="swap-search"][data-id="${swapBtn.dataset.id}"]`);
+      if (input) input.focus();
+    }
+    else if (cancelSwap) { editingComponentLineId = null; renderLinesTable(); }
+    else if (swapOpt) {
+      const lineId = swapOpt.closest('[data-role="swap-dropdown"]').dataset.id;
+      const results = filterComponents(swapQuery);
+      commitSwap(lineId, results[parseInt(swapOpt.dataset.idx, 10)]);
+    }
+    else if (newOpt) {
+      const results = filterComponents(newLine.query);
+      pickNewLineComponent(results[parseInt(newOpt.dataset.idx, 10)]);
+    }
+    else if (clearNew) { newLine = { query: '', pick: null, qty: '', unit: '', supplierId: '' }; renderLinesTable(); }
   });
   document.getElementById('linesBody').addEventListener('change', (e) => {
     const sel = e.target.closest('select[data-role="supplier-edit-select"]');
-    if (sel) setLineSupplier(sel.dataset.id, sel.value);
+    if (sel) { setLineSupplier(sel.dataset.id, sel.value); return; }
+    const newUnitSel = e.target.closest('select[data-role="new-line-unit"]');
+    if (newUnitSel) { newLine.unit = newUnitSel.value; updateNewLinePreview(); return; }
+    const newSupSel = e.target.closest('select[data-role="new-line-supplier"]');
+    if (newSupSel) { newLine.supplierId = newSupSel.value; updateNewLinePreview(); }
+  });
+  document.getElementById('linesBody').addEventListener('input', (e) => {
+    const swapInput = e.target.closest('input[data-role="swap-search"]');
+    if (swapInput) {
+      swapQuery = swapInput.value;
+      const dropdown = swapInput.parentElement.querySelector('[data-role="swap-dropdown"]');
+      dropdown.innerHTML = searchOptionsHTML(filterComponents(swapQuery));
+      dropdown.hidden = false;
+      return;
+    }
+    const newInput = e.target.closest('input[data-role="new-line-search"]');
+    if (newInput) {
+      newLine.query = newInput.value;
+      const dropdown = newInput.parentElement.querySelector('[data-role="new-line-dropdown"]');
+      dropdown.innerHTML = searchOptionsHTML(filterComponents(newLine.query));
+      dropdown.hidden = false;
+      return;
+    }
+    const qtyDraft = e.target.closest('input[data-role="new-line-qty"]');
+    if (qtyDraft) { newLine.qty = qtyDraft.value === '' ? '' : parseFloat(qtyDraft.value); updateNewLinePreview(); }
   });
   document.getElementById('linesBody').addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && e.target.matches('input[data-role="qty-edit-input"]')) {
       e.preventDefault();
       saveQtyFromInputs(e.target.dataset.id);
+      return;
+    }
+    if (e.key === 'Enter' && e.target.matches('input[data-role="new-line-qty"]')) {
+      e.preventDefault();
+      attemptCommitNewLine();
+      return;
+    }
+    if (e.target.matches('input[data-role="new-line-search"], input[data-role="swap-search"]')) {
+      const dropdown = e.target.parentElement.querySelector('.search-dropdown');
+      if (!dropdown || dropdown.hidden) return;
+      const options = Array.from(dropdown.querySelectorAll('.search-option'));
+      let idx = options.findIndex(o => o.classList.contains('active'));
+      if (e.key === 'ArrowDown') { e.preventDefault(); idx = Math.min(idx + 1, options.length - 1); options.forEach(o => o.classList.remove('active')); if (options[idx]) options[idx].classList.add('active'); }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); idx = Math.max(idx - 1, 0); options.forEach(o => o.classList.remove('active')); if (options[idx]) options[idx].classList.add('active'); }
+      else if (e.key === 'Escape') { dropdown.hidden = true; }
+      else if (e.key === 'Enter' && idx >= 0) { e.preventDefault(); options[idx].click(); }
     }
   });
+  document.getElementById('linesBody').addEventListener('focusout', (e) => {
+    const row = e.target.closest('tr.new-row');
+    if (!row) return;
+    setTimeout(() => { if (!row.contains(document.activeElement)) attemptCommitNewLine(); }, 0);
+  });
   bindComponentLinks(document.getElementById('linesBody'));
+
+  // ---------- Drag & drop reordering (replaces the old move-up/move-down buttons) ----------
+  document.getElementById('linesBody').addEventListener('dragstart', (e) => {
+    const tr = e.target.closest('tr[draggable="true"]');
+    if (!tr) return;
+    draggingLineId = tr.dataset.id;
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', draggingLineId);
+    tr.classList.add('dragging');
+  });
+  document.getElementById('linesBody').addEventListener('dragend', (e) => {
+    const tr = e.target.closest('tr[draggable="true"]');
+    if (tr) tr.classList.remove('dragging');
+    document.querySelectorAll('#linesBody tr.drop-above, #linesBody tr.drop-below').forEach(el => el.classList.remove('drop-above', 'drop-below'));
+    draggingLineId = null;
+  });
+  document.getElementById('linesBody').addEventListener('dragover', (e) => {
+    const tr = e.target.closest('tr[draggable="true"]');
+    if (!tr || !draggingLineId || tr.dataset.id === draggingLineId) return;
+    e.preventDefault();
+    const rect = tr.getBoundingClientRect();
+    const before = (e.clientY - rect.top) < rect.height / 2;
+    document.querySelectorAll('#linesBody tr.drop-above, #linesBody tr.drop-below').forEach(el => el.classList.remove('drop-above', 'drop-below'));
+    tr.classList.add(before ? 'drop-above' : 'drop-below');
+  });
+  document.getElementById('linesBody').addEventListener('drop', (e) => {
+    const tr = e.target.closest('tr[draggable="true"]');
+    if (!tr || !draggingLineId || tr.dataset.id === draggingLineId) return;
+    e.preventDefault();
+    const before = tr.classList.contains('drop-above');
+    document.querySelectorAll('#linesBody tr.drop-above, #linesBody tr.drop-below').forEach(el => el.classList.remove('drop-above', 'drop-below'));
+    reorderLine(draggingLineId, tr.dataset.id, before);
+  });
+
+  // Picks a component for the trailing add-row: reveals qty/unit(/supplier) and
+  // focuses quantity. Nothing is saved until a valid quantity is set.
+  function pickNewLineComponent(result) {
+    if (!result) return;
+    newLine.pick = result;
+    newLine.query = result.name;
+    newLine.unit = unitsForType(result.measureType)[0] || '';
+    newLine.qty = '';
+    newLine.supplierId = result.type === 'Ingredient' ? ((cheapestSupplierFor(result.id) || {}).id || '') : '';
+    renderLinesTable();
+    const qtyInput = document.querySelector('#linesBody tr.new-row input[data-role="new-line-qty"]');
+    if (qtyInput) qtyInput.focus();
+  }
+
+  // Fires on Enter in the qty field, or when focus leaves the add-row entirely
+  // (see the focusout listener above) — a no-op until there's a component and a
+  // valid quantity, so it's safe to call opportunistically.
+  function attemptCommitNewLine() {
+    if (!newLine.pick) return;
+    const qty = parseFloat(newLine.qty);
+    if (!qty || qty <= 0 || !newLine.unit) return;
+    commitNewLine();
+  }
+
+  async function commitNewLine() {
+    if (!requireAuth() || !currentRecipe) return;
+    const { pick, unit, supplierId } = newLine;
+    const qty = parseFloat(newLine.qty);
+    const lineCost = computeLineCost(pick, qty, unit, supplierId) || 0;
+    const cfg = getStoredConfig();
+    setLnStatus('Adding line...');
+    try {
+      const existingRL = await sheetsGet(cfg.spreadsheetId, RL_RANGE, token);
+      const rlRows = existingRL.length ? existingRL : [RL_HEADERS];
+      const lineId = nextId(rlRows, 'RL');
+      const row = [lineId, currentRecipe.id, pick.type, pick.id, qty, unit, supplierId || '', lineCost.toFixed(4), nextSortOrder()];
+      await sheetsAppend(cfg.spreadsheetId, RL_RANGE, row, token);
+      await recalcAndSaveRecipeCost(cfg);
+      newLine = { query: '', pick: null, qty: '', unit: '', supplierId: '' };
+      await refreshCurrentRecipe();
+      setLnStatus('Line added.', 'ok');
+      const freshInput = document.querySelector('#linesBody tr.new-row input[data-role="new-line-search"]');
+      if (freshInput) freshInput.focus();
+    } catch (err) {
+      setLnStatus('Error: ' + err.message, 'error');
+    }
+  }
+
+  // Swap: points an existing line at a different ingredient/sub-recipe, keeping its
+  // quantity when the new component's unit family still supports it (otherwise
+  // resetting to that family's default unit), and re-pricing against the new
+  // component's cheapest supplier (or the sub-recipe's own cost).
+  async function commitSwap(lineId, result) {
+    if (!result) return;
+    const line = currentLines.find(l => l.id === lineId);
+    if (!line || !currentRecipe) return;
+    const newUnit = unitsForType(result.measureType).includes(line.unit) ? line.unit : (unitsForType(result.measureType)[0] || '');
+    const newSupplierId = result.type === 'Ingredient' ? ((cheapestSupplierFor(result.id) || {}).id || '') : '';
+    const newLineCost = computeLineCost(result, line.quantity, newUnit, newSupplierId) || 0;
+    const cfg = getStoredConfig();
+    setLnStatus('Swapping...');
+    try {
+      await sheetsUpdateRange(
+        cfg.spreadsheetId, `RecipeLines!C${line.rowIndex + 1}:H${line.rowIndex + 1}`,
+        [[result.type, result.id, line.quantity, newUnit, newSupplierId, newLineCost.toFixed(4)]], token, 'USER_ENTERED'
+      );
+      await recalcAndSaveRecipeCost(cfg);
+      editingComponentLineId = null;
+      await refreshCurrentRecipe();
+      setLnStatus('Component swapped.', 'ok');
+    } catch (err) {
+      setLnStatus('Error swapping: ' + err.message, 'error');
+    }
+  }
 
   // Sums RecipeLines for currentRecipe and writes Total + Cost per base back to the Recipes row.
   async function recalcAndSaveRecipeCost(cfg) {
@@ -965,7 +1105,7 @@
     await loadAllLookups();
     if (currentRecipe) {
       currentRecipe = recipesAll.find(r => r.id === currentRecipe.id) || null;
-      if (currentRecipe) { renderRecipeDetail(); refreshComponentOptions(); await loadLines(); }
+      if (currentRecipe) { renderRecipeDetail(); await loadLines(); }
       else { recipeDialog.close(); }
     }
     setPageStatus(`Loaded ${recipesAll.length} recipe(s).`, 'ok');
@@ -1311,7 +1451,6 @@
       await Promise.all([loadIngredients(), loadSupplierIngredients()]);
       await recalcAndSaveRecipeCost(cfg);
       await refreshCurrentRecipe();
-      refreshComponentOptions();
       const noPrice = included.filter(r => supplierCostPerBase(r.supplierId) == null).length;
       pasteDialog.close();
       setLnStatus(`Added ${appendLines.length} line(s)${noPrice ? ` — ${noPrice} had no supplier price (counted as £0; link a supplier and re-add to cost them)` : ''}.`, noPrice ? '' : 'ok');
