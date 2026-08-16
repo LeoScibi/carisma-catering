@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300;9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=3">
+<link rel="stylesheet" href="css/style.css?v=4">
 </head>
 <body>
 
@@ -142,7 +142,7 @@
       <div class="dialog-section">
         <h3>Linked suppliers</h3>
         <table id="linksTable" style="display:none;">
-          <thead><tr><th>Supplier</th><th>Pack</th><th>Price</th><th>Cost / base unit</th></tr></thead>
+          <thead><tr><th>Supplier</th><th>Pack</th><th class="num">Price</th><th class="num">Cost / base unit</th></tr></thead>
           <tbody id="linksBody"></tbody>
         </table>
         <p class="sub" id="noLinks" style="display:none;">No suppliers linked yet.</p>
@@ -303,11 +303,18 @@
       return;
     }
     const [header, ...rest] = rows;
-    head.innerHTML = header.map(h => `<th>${h}</th>`).join('');
-    body.innerHTML = rest.map((r, j) =>
+    // CATEGORY (index 2) is folded into the NAME cell (index 1) as a sub-label,
+    // so it's skipped as its own column in both the head and body loops below.
+    head.innerHTML = header.map((h, i) => i === 2 ? '' : `<th>${h}</th>`).join('');
+    body.innerHTML = rest.map((r, j) => {
+      const cells = header.map((_, i) => {
+        if (i === 2) return '';
+        if (i === 1) return `<td><span class="cell-main">${r[1] ?? ''}</span>${r[2] ? `<span class="cell-sub">${r[2]}</span>` : ''}</td>`;
+        return `<td>${r[i] ?? ''}</td>`;
+      }).join('');
       // data-idx is the row's index in cachedRows (j+1, since header is index 0)
-      `<tr data-idx="${j + 1}">` + header.map((_, i) => `<td>${r[i] ?? ''}</td>`).join('') + '</tr>'
-    ).join('');
+      return `<tr data-idx="${j + 1}">${cells}</tr>`;
+    }).join('');
     table.style.display = 'table';
     hint.style.display = 'block';
   }
@@ -417,10 +424,10 @@
     const base = baseUnitFor(editMeasureType());
     body.innerHTML = mine.map(r => `
       <tr>
-        <td>${supplierName(r[2])}</td>
+        <td><span class="cell-main">${supplierName(r[2])}</span></td>
         <td>${r[3] ?? ''} ${r[4] ?? ''}</td>
-        <td>${fmtMoney2(parseFloat(r[5]) || 0)}</td>
-        <td>${fmtMoney2(parseFloat(r[6]) || 0)} / ${base}</td>
+        <td class="num"><span class="cell-main">${fmtMoney2(parseFloat(r[5]) || 0)}</span></td>
+        <td class="num"><span class="cell-main">${fmtMoney2(parseFloat(r[6]) || 0)}</span><span class="cell-sub">per ${base}</span></td>
       </tr>
     `).join('');
     table.style.display = 'table';

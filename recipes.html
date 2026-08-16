@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300;9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=3">
+<link rel="stylesheet" href="css/style.css?v=4">
 </head>
 <body>
 
@@ -46,7 +46,7 @@
     <div id="pageStatus" class="status-line"></div>
     <p class="sub" id="recipeHint" style="display:none;">Click a recipe to open it, add lines, or paste an ingredient list.</p>
     <table id="recipeTable" class="clickable" style="display:none;">
-      <thead><tr><th>Recipe</th><th>Type</th><th>Yield</th><th>Total cost</th></tr></thead>
+      <thead><tr><th>Recipe</th><th>Yield</th><th class="num">Total cost</th></tr></thead>
       <tbody id="recipeListBody"></tbody>
     </table>
 
@@ -127,7 +127,7 @@
         <p class="sub">Line costs are captured when a line is added. If you add or change a supplier price afterwards, use "Refresh costs" to re-price existing lines.</p>
         <div id="refreshCostsStatus" class="status-line"></div>
         <table id="linesTable" style="display:none;">
-          <thead><tr><th>Component</th><th>Type</th><th>Quantity</th><th>Supplier</th><th>Line cost</th><th></th></tr></thead>
+          <thead><tr><th>Component</th><th>Quantity</th><th>Supplier</th><th class="num">Line cost</th><th></th></tr></thead>
           <tbody id="linesBody"></tbody>
         </table>
         <p class="sub" id="noLines" style="display:none;">No lines yet — add one above or paste a recipe.</p>
@@ -330,10 +330,9 @@
     if (!recipesAll.length) { none(); body.innerHTML = ''; return; }
     body.innerHTML = recipesAll.map(r => `
       <tr data-id="${r.id}">
-        <td>${r.name}</td>
-        <td>${r.type}</td>
+        <td><span class="cell-main">${r.name}</span><span class="cell-sub">${r.type}</span></td>
         <td>${r.yieldAmount} ${r.yieldUnit}</td>
-        <td>${fmtMoney2(r.totalCost)}</td>
+        <td class="num"><span class="cell-main">${fmtMoney2(r.totalCost)}</span><span class="cell-sub">${fmtMoney2(r.costPerBase)} per ${baseUnitFor(r.yieldMeasureType)}</span></td>
       </tr>
     `).join('');
     table.style.display = 'table';
@@ -593,7 +592,7 @@
   function componentLink(type, id) {
     const name = componentDisplayName(type, id);
     const role = type === 'Ingredient' ? 'open-ingredient' : 'open-recipe';
-    return `<a href="#" data-role="${role}" data-id="${id}">${name}</a>`;
+    return `<a href="#" class="cell-main" data-role="${role}" data-id="${id}">${name}</a>`;
   }
   function onIngredientChanged() {
     loadIngredients().then(() => {
@@ -683,20 +682,21 @@
     if (!currentLines.length) { table.style.display = 'none'; body.innerHTML = ''; none.style.display = 'block'; return; }
     none.style.display = 'none';
     const factor = currentScaleFactor;
-    body.innerHTML = currentLines.map((l, i) => `
+    body.innerHTML = currentLines.map((l, i) => {
+      const rateUnit = baseUnitFor(componentMeasureType(l));
+      return `
       <tr>
-        <td>${componentLink(l.componentType, l.componentId)}</td>
-        <td>${l.componentType}</td>
+        <td>${componentLink(l.componentType, l.componentId)}<span class="cell-sub">${l.componentType}</span></td>
         <td>${quantityCellHTML(l, factor)}</td>
         <td>${supplierCellHTML(l)}</td>
-        <td>${fmtMoney2(l.lineCost * factor)}</td>
+        <td class="num"><span class="cell-main">${fmtMoney2(l.lineCost * factor)}</span>${rateUnit ? `<span class="cell-sub">${fmtMoney2(lineCostPerBase(l))} per ${rateUnit}</span>` : ''}</td>
         <td style="white-space:nowrap;">
           <button type="button" class="secondary" data-role="move-up" data-id="${l.id}" title="Move up" style="margin:0; padding:4px 8px;" ${i === 0 ? 'disabled' : ''}>&uarr;</button>
           <button type="button" class="secondary" data-role="move-down" data-id="${l.id}" title="Move down" style="margin:0; padding:4px 8px;" ${i === currentLines.length - 1 ? 'disabled' : ''}>&darr;</button>
           <button type="button" class="secondary danger" data-role="remove-line" data-id="${l.id}" title="Remove" style="margin:0; padding:4px 8px;">&times;</button>
         </td>
-      </tr>
-    `).join('');
+      </tr>`;
+    }).join('');
     table.style.display = 'table';
   }
 

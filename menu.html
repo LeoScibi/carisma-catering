@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300;9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=3">
+<link rel="stylesheet" href="css/style.css?v=4">
 </head>
 <body>
 
@@ -59,7 +59,7 @@
 
     <h2>Menu</h2>
     <table id="menuTable" style="display:none;">
-      <thead><tr><th>Recipe</th><th>Quantity needed</th><th>Est. cost</th><th></th></tr></thead>
+      <thead><tr><th>Recipe</th><th>Quantity needed</th><th class="num">Est. cost</th><th></th></tr></thead>
       <tbody id="menuBody"></tbody>
     </table>
     <p class="sub" id="menuEmpty">No recipes on the menu yet — add one above.</p>
@@ -193,9 +193,9 @@
       const cost = rec ? rec.costPerBase * toBaseAmount(rec.yieldMeasureType, m.qty, rec.yieldUnit) : 0;
       return `
         <tr>
-          <td>${rec ? `<a href="recipes.html?open=${encodeURIComponent(rec.id)}" target="_blank">${rec.name}</a>` : m.recipeId}</td>
+          <td>${rec ? `<a href="recipes.html?open=${encodeURIComponent(rec.id)}" target="_blank" class="cell-main">${rec.name}</a><span class="cell-sub">${rec.type}</span>` : m.recipeId}</td>
           <td>${m.qty} ${rec ? rec.yieldUnit : ''}</td>
-          <td>${fmtMoney2(cost)}</td>
+          <td class="num"><span class="cell-main">${fmtMoney2(cost)}</span>${rec ? `<span class="cell-sub">${fmtMoney2(rec.costPerBase)} per ${baseUnitFor(rec.yieldMeasureType)}</span>` : ''}</td>
           <td><button type="button" class="secondary" data-idx="${idx}" style="margin:0; padding:5px 10px;">Remove</button></td>
         </tr>`;
     }).join('');
@@ -300,9 +300,11 @@
         if (cost != null) grandTotal += cost; else noPriceCount++;
         return `
           <tr>
-            <td>${ing ? `<a href="#" data-role="open-ingredient" data-id="${id}">${ing.name}</a>` : id}</td>
+            <td>${ing ? `<a href="#" class="cell-main" data-role="open-ingredient" data-id="${id}">${ing.name}</a>` : id}</td>
             <td>${amount.toFixed(2)} ${ing ? ing.baseUnit : ''}</td>
-            <td>${cost != null ? fmtMoney2(cost) : '<span style="color:var(--warn);">no price</span>'}</td>
+            <td class="num">${cost != null
+              ? `<span class="cell-main">${fmtMoney2(cost)}</span><span class="cell-sub">${fmtMoney2(cheap.costPerBase)} per ${ing ? ing.baseUnit : ''}</span>`
+              : '<span class="cell-main" style="color:var(--warn);">no price</span>'}</td>
             <td style="color:var(--muted); font-size:12px;">${cheap ? supplierName(cheap.supplierId) : '—'}</td>
           </tr>`;
       }).join('');
@@ -310,7 +312,7 @@
         <div class="card">
           <h3 style="margin-top:0;">${cat}</h3>
           <table>
-            <thead><tr><th>Ingredient</th><th>Total needed</th><th>Est. cost</th><th>Cheapest supplier</th></tr></thead>
+            <thead><tr><th>Ingredient</th><th>Total needed</th><th class="num">Est. cost</th><th>Cheapest supplier</th></tr></thead>
             <tbody>${bodyRows}</tbody>
           </table>
         </div>`;

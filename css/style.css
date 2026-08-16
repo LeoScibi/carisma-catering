@@ -304,6 +304,23 @@ table.clickable tbody tr { cursor: pointer; }
    padding, not the big form-button treatment above. */
 td button { margin-top: 0; height: auto; }
 
+/* Row anatomy: a name/value on its own line with a smaller mono "sub" line
+   underneath (category, contact, unit rate, etc). Reused for both name cells
+   and cost cells — .num additionally right-aligns and is applied to the <td>. */
+.cell-main { display: block; font-family: var(--serif); font-size: 14px; color: var(--textDark); line-height: 1.3; }
+.cell-main:is(a) { color: var(--green700); text-decoration: none; }
+.cell-main:is(a):hover { text-decoration: underline; }
+.cell-sub {
+  display: block;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  font-weight: 500;
+  color: var(--textMuted);
+  letter-spacing: 0.04em;
+  margin-top: 2px;
+}
+th.num, td.num { text-align: right; }
+
 .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 .field-row.three { grid-template-columns: 1fr 1fr 1fr; }
 @media (max-width: 700px) { .field-row, .field-row.three { grid-template-columns: 1fr; } }

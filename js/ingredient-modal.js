@@ -75,7 +75,7 @@
           <div class="dialog-section">
             <h3>Linked suppliers</h3>
             <table id="im_linksTable" style="display:none;">
-              <thead><tr><th>Supplier</th><th>Pack</th><th>Price</th><th>Cost / base unit</th></tr></thead>
+              <thead><tr><th>Supplier</th><th>Pack</th><th class="num">Price</th><th class="num">Cost / base unit</th></tr></thead>
               <tbody id="im_linksBody"></tbody>
             </table>
             <p class="sub" id="im_noLinks" style="display:none;">No suppliers linked yet.</p>
@@ -158,10 +158,10 @@
     const base = baseUnitFor(editMeasureType());
     body.innerHTML = mine.map(r => `
       <tr>
-        <td>${supplierNameOf(r[2])}</td>
+        <td><span class="cell-main">${supplierNameOf(r[2])}</span></td>
         <td>${r[3] ?? ''} ${r[4] ?? ''}</td>
-        <td>${fmtMoney2(parseFloat(r[5]) || 0)}</td>
-        <td>${fmtMoney2(parseFloat(r[6]) || 0)} / ${base}</td>
+        <td class="num"><span class="cell-main">${fmtMoney2(parseFloat(r[5]) || 0)}</span></td>
+        <td class="num"><span class="cell-main">${fmtMoney2(parseFloat(r[6]) || 0)}</span><span class="cell-sub">per ${base}</span></td>
       </tr>
     `).join('');
     table.style.display = 'table';

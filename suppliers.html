@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300;9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=3">
+<link rel="stylesheet" href="css/style.css?v=4">
 </head>
 <body>
 
@@ -103,10 +103,16 @@
     const body = document.getElementById('tableBody');
     if (!rows.length || rows.length < 2) { table.style.display = 'none'; return; }
     const [header, ...rest] = rows;
-    head.innerHTML = header.map(h => `<th>${h}</th>`).join('');
-    body.innerHTML = rest.map(r =>
-      '<tr>' + header.map((_, i) => `<td>${r[i] ?? ''}</td>`).join('') + '</tr>'
-    ).join('');
+    // CONTACT (index 2) is folded into the NAME cell (index 1) as a sub-label.
+    head.innerHTML = header.map((h, i) => i === 2 ? '' : `<th>${h}</th>`).join('');
+    body.innerHTML = rest.map(r => {
+      const cells = header.map((_, i) => {
+        if (i === 2) return '';
+        if (i === 1) return `<td><span class="cell-main">${r[1] ?? ''}</span>${r[2] ? `<span class="cell-sub">${r[2]}</span>` : ''}</td>`;
+        return `<td>${r[i] ?? ''}</td>`;
+      }).join('');
+      return `<tr>${cells}</tr>`;
+    }).join('');
     table.style.display = 'table';
   }
 
