@@ -12,6 +12,7 @@
   const IM_SUP_RANGE = 'Suppliers!A:D';
 
   let dialogEl = null;
+  let dialogGuard = null;
   let token = null;
   let cachedRows = [IM_HEADERS];
   let suppliers = [];
@@ -98,6 +99,7 @@
       </dialog>
     `);
     dialogEl = document.getElementById('imDialog');
+    dialogGuard = attachDiscardGuard(dialogEl);
     wireEvents();
     return dialogEl;
   }
@@ -169,7 +171,7 @@
   }
 
   function wireEvents() {
-    document.getElementById('im_close').addEventListener('click', () => dialogEl.close());
+    document.getElementById('im_close').addEventListener('click', () => dialogGuard.guardedClose());
 
     document.getElementById('im_measuretype').addEventListener('change', () => {
       document.getElementById('im_baseunit').value = baseUnitFor(editMeasureType());
@@ -208,6 +210,7 @@
         current.name = name;
         document.getElementById('im_title').textContent = `${current.id} · ${name}`;
         setStatus('im_editStatus', 'Saved.', 'ok');
+        dialogGuard.arm();
         onChangeCb && onChangeCb({ action: 'saved', id: current.id });
       } catch (err) {
         setStatus('im_editStatus', 'Error saving: ' + err.message, 'error');
@@ -322,6 +325,7 @@
       document.getElementById('im_linkForm').reset();
       refreshLinkPackUnits();
       renderLinks(r[0]);
+      dialogGuard.arm();
 
       setStatus('im_linkStatus', 'Loading suppliers...');
       await loadSuppliersAndLinks(cfg.spreadsheetId);

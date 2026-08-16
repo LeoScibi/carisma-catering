@@ -382,6 +382,7 @@ button.add-btn .plus { font-size: 16px; line-height: 1; font-weight: 600; }
 
 /* Modal dialog (used for the Add / detail forms) */
 dialog {
+  position: relative;
   border: 1px solid var(--lineStrong);
   border-radius: var(--rLg);
   padding: 0;
@@ -392,6 +393,15 @@ dialog {
   box-shadow: var(--shadowLg);
 }
 dialog::backdrop { background: rgba(31,58,43,0.35); }
+
+/* In-dialog "discard unsaved changes?" prompt — see js/dialog-guard.js */
+.discard-panel { display: none; position: absolute; inset: 0; background: rgba(31,58,43,0.35); border-radius: var(--rLg); align-items: center; justify-content: center; padding: 20px; z-index: 1; }
+.discard-panel.open { display: flex; }
+.discard-panel .box { background: var(--paper2); border: 1px solid var(--lineStrong); border-radius: var(--rMd); box-shadow: var(--shadowMd); padding: 20px 22px; max-width: 320px; width: 100%; }
+.discard-panel h3 { margin: 0 0 6px; font-family: var(--serif); font-weight: 500; font-size: 16px; color: var(--textDark); }
+.discard-panel p { margin: 0 0 16px; font-size: 13px; color: var(--textMuted); line-height: 1.5; }
+.discard-panel .actions { display: flex; gap: 8px; justify-content: flex-end; }
+.discard-panel .actions button { margin: 0; }
 .dialog-head {
   display: flex;
   align-items: center;
