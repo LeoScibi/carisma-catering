@@ -175,6 +175,7 @@
 <script src="js/sheets.js?v=2"></script>
 <script src="js/units.js?v=4"></script>
 <script src="js/dialog-guard.js"></script>
+<script src="js/supplier-modal.js"></script>
 <script>
   const RANGE = 'Ingredients!A:K';
   const HEADERS = ['ID','NAME','CATEGORY','MEASURE TYPE','BASE UNIT','DESCRIPTION','STORAGE','SHELF LIFE','VEGAN','VEGETARIAN','GLUTEN FREE'];
@@ -428,7 +429,7 @@
     const base = baseUnitFor(editMeasureType());
     body.innerHTML = mine.map(r => `
       <tr>
-        <td><span class="cell-main">${supplierName(r[2])}</span></td>
+        <td><a href="#" class="cell-main" data-role="open-supplier" data-id="${r[2]}">${supplierName(r[2])}</a></td>
         <td>${r[3] ?? ''} ${r[4] ?? ''}</td>
         <td class="num"><span class="cell-main">${fmtMoney2(parseFloat(r[5]) || 0)}</span></td>
         <td class="num"><span class="cell-main">${fmtMoney2(parseFloat(r[6]) || 0)}</span><span class="cell-sub">per ${base}</span></td>
@@ -477,6 +478,12 @@
   // Runs after every real close (button, ESC, backdrop, or Discard).
   detailDialog.addEventListener('close', () => { currentEdit = null; });
   document.getElementById('closeDetailBtn').addEventListener('click', () => detailDialogGuard.guardedClose());
+
+  // Supplier names in the linked-suppliers table open the shared supplier modal in place.
+  document.getElementById('linksBody').addEventListener('click', (e) => {
+    const a = e.target.closest('a[data-role="open-supplier"]');
+    if (a) { e.preventDefault(); openSupplierModal(a.dataset.id, { onChange: () => { if (currentEdit) renderLinks(currentEdit.id); } }); }
+  });
 
   document.getElementById('e_measuretype').addEventListener('change', () => {
     document.getElementById('e_baseunit').value = baseUnitFor(editMeasureType());

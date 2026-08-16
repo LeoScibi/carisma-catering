@@ -160,7 +160,7 @@
     const base = baseUnitFor(editMeasureType());
     body.innerHTML = mine.map(r => `
       <tr>
-        <td><span class="cell-main">${supplierNameOf(r[2])}</span></td>
+        <td><a href="#" class="cell-main" data-role="open-supplier" data-id="${r[2]}">${supplierNameOf(r[2])}</a></td>
         <td>${r[3] ?? ''} ${r[4] ?? ''}</td>
         <td class="num"><span class="cell-main">${fmtMoney2(parseFloat(r[5]) || 0)}</span></td>
         <td class="num"><span class="cell-main">${fmtMoney2(parseFloat(r[6]) || 0)}</span><span class="cell-sub">per ${base}</span></td>
@@ -172,6 +172,11 @@
 
   function wireEvents() {
     document.getElementById('im_close').addEventListener('click', () => dialogGuard.guardedClose());
+
+    document.getElementById('im_linksBody').addEventListener('click', (e) => {
+      const a = e.target.closest('a[data-role="open-supplier"]');
+      if (a) { e.preventDefault(); openSupplierModal(a.dataset.id, { onChange: () => { if (current) renderLinks(current.id); } }); }
+    });
 
     document.getElementById('im_measuretype').addEventListener('change', () => {
       document.getElementById('im_baseunit').value = baseUnitFor(editMeasureType());

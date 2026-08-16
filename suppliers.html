@@ -51,7 +51,8 @@
   </div>
 
   <h2>All suppliers</h2>
-  <table id="rowsTable" style="display:none;">
+  <p class="sub" id="listHint" style="display:none;">Click any supplier to view details, edit it, or add a price.</p>
+  <table id="rowsTable" class="clickable" style="display:none;">
     <thead><tr id="tableHead"></tr></thead>
     <tbody id="tableBody"></tbody>
   </table>
@@ -60,6 +61,8 @@
 <script src="js/config.js?v=2"></script>
 <script src="js/sheets.js?v=2"></script>
 <script src="js/units.js?v=4"></script>
+<script src="js/dialog-guard.js"></script>
+<script src="js/supplier-modal.js"></script>
 <script>
   const RANGE = 'Suppliers!A:D';
   const HEADERS = ['ID','NAME','CONTACT','NOTES'];
@@ -101,7 +104,8 @@
     const table = document.getElementById('rowsTable');
     const head = document.getElementById('tableHead');
     const body = document.getElementById('tableBody');
-    if (!rows.length || rows.length < 2) { table.style.display = 'none'; return; }
+    const hint = document.getElementById('listHint');
+    if (!rows.length || rows.length < 2) { table.style.display = 'none'; hint.style.display = 'none'; return; }
     const [header, ...rest] = rows;
     // CONTACT (index 2) is folded into the NAME cell (index 1) as a sub-label.
     head.innerHTML = header.map((h, i) => i === 2 ? '' : `<th>${h}</th>`).join('');
@@ -111,10 +115,17 @@
         if (i === 1) return `<td><span class="cell-main">${r[1] ?? ''}</span>${r[2] ? `<span class="cell-sub">${r[2]}</span>` : ''}</td>`;
         return `<td>${r[i] ?? ''}</td>`;
       }).join('');
-      return `<tr>${cells}</tr>`;
+      return `<tr data-id="${r[0]}">${cells}</tr>`;
     }).join('');
     table.style.display = 'table';
+    hint.style.display = 'block';
   }
+
+  // Row click -> open the shared supplier detail/edit modal in place.
+  document.getElementById('tableBody').addEventListener('click', (e) => {
+    const tr = e.target.closest('tr[data-id]');
+    if (tr) openSupplierModal(tr.dataset.id, { onChange: loadRows });
+  });
 
   document.getElementById('addForm').addEventListener('submit', async (e) => {
     e.preventDefault();

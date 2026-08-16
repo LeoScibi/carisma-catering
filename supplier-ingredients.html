@@ -73,7 +73,8 @@
 <script src="js/sheets.js?v=2"></script>
 <script src="js/units.js?v=4"></script>
 <script src="js/dialog-guard.js"></script>
-<script src="js/ingredient-modal.js?v=3"></script>
+<script src="js/ingredient-modal.js?v=4"></script>
+<script src="js/supplier-modal.js"></script>
 <script>
   const SI_RANGE = 'SupplierIngredients!A:G';
   const SI_HEADERS = ['ID','INGREDIENT ID','SUPPLIER ID','PACK SIZE','PACK UNIT','PRICE','COST PER BASE UNIT'];
@@ -211,8 +212,11 @@
             </tr>`;
           }).join('')}</tbody>
         </table>` : '<p class="sub" style="margin:6px 0 0;">No products yet.</p>';
+      const heading = knownIds.has(g.id)
+        ? `<a href="#" class="cell-main" data-role="open-supplier" data-id="${g.id}" style="font-size:19px;">${g.name}</a>`
+        : g.name;
       return `<div class="card">
-        <h2 style="margin-top:0;">${g.name}
+        <h2 style="margin-top:0;">${heading}
           <span style="color:var(--muted); font-weight:400; font-size:13px;">· ${items.length} product${items.length === 1 ? '' : 's'}</span>
         </h2>
         ${inner}
@@ -260,8 +264,10 @@
 
   document.getElementById('reloadBtn').addEventListener('click', () => { loadLookups(); loadRows(); });
 
-  // Ingredient names in the price lists open the shared ingredient modal in place.
+  // Ingredient and supplier names in the price lists open their shared modal in place.
   document.getElementById('priceLists').addEventListener('click', (e) => {
+    const sup = e.target.closest('a[data-role="open-supplier"]');
+    if (sup) { e.preventDefault(); openSupplierModal(sup.dataset.id, { onChange: () => { loadLookups(); loadRows(); } }); return; }
     const a = e.target.closest('a[data-role="open-ingredient"]');
     if (a) { e.preventDefault(); openIngredientModal(a.dataset.id, { onChange: () => { loadLookups(); loadRows(); } }); }
   });
