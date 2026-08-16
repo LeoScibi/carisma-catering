@@ -136,7 +136,7 @@
             <select id="nr_yieldunit" required><option value="">Choose measure type first</option></select>
           </div>
         </div>
-        <p class="hint">The portion size — e.g. this recipe makes 2 kg, 500 ml, or 12 pc. It's what lets this recipe be used as a component inside another one.</p>
+        <p class="hint">The portion size — e.g. this recipe makes 2 kg, 500 ml, or 12 portions. It's what lets this recipe be used as a component inside another one.</p>
         <button type="submit" id="nr_addBtn">Create recipe</button>
         <button type="button" id="nr_cancelBtn" class="secondary">Cancel</button>
       </form>
@@ -196,7 +196,7 @@
 
 <script src="js/config.js?v=2"></script>
 <script src="js/sheets.js?v=2"></script>
-<script src="js/units.js?v=3"></script>
+<script src="js/units.js?v=4"></script>
 <script src="js/dialog-guard.js"></script>
 <script src="js/ingredient-modal.js?v=3"></script>
 <script>
@@ -301,8 +301,8 @@
     body.innerHTML = recipesAll.map(r => `
       <tr data-id="${r.id}">
         <td><span class="cell-main">${r.name}</span><span class="cell-sub">${r.type}</span></td>
-        <td>${r.yieldAmount} ${r.yieldUnit}</td>
-        <td class="num"><span class="cell-main">${fmtMoney2(r.totalCost)}</span><span class="cell-sub">${fmtMoney2(r.costPerBase)} per ${baseUnitFor(r.yieldMeasureType)}</span></td>
+        <td>${r.yieldAmount} ${portionUnit(r.yieldMeasureType, r.yieldUnit, r.yieldAmount)}</td>
+        <td class="num"><span class="cell-main">${fmtMoney2(r.totalCost)}</span><span class="cell-sub">${fmtMoney2(r.costPerBase)} per ${portionRateUnit(r.yieldMeasureType)}</span></td>
       </tr>
     `).join('');
     table.style.display = 'table';
@@ -346,7 +346,7 @@
     const sel = document.getElementById('nr_yieldunit');
     const mt = e.target.value;
     const opts = unitsForType(mt);
-    sel.innerHTML = opts.length ? opts.map(u => `<option value="${u}">${unitLabel(mt, u)}</option>`).join('') : '<option value="">Choose measure type first</option>';
+    sel.innerHTML = opts.length ? opts.map(u => `<option value="${u}">${portionUnit(mt, u)}</option>`).join('') : '<option value="">Choose measure type first</option>';
   });
 
   document.getElementById('newRecipeForm').addEventListener('submit', async (e) => {
@@ -380,10 +380,10 @@
   function renderRecipeDetail() {
     document.getElementById('rd_title').textContent = currentRecipe.name;
     document.getElementById('rd_type').textContent = currentRecipe.type;
-    document.getElementById('rd_yield').textContent = `Yields ${currentRecipe.yieldAmount} ${currentRecipe.yieldUnit}`;
-    document.getElementById('rd_costperbase').textContent = `${fmtMoney2(currentRecipe.costPerBase)} per ${baseUnitFor(currentRecipe.yieldMeasureType)}`;
+    document.getElementById('rd_yield').textContent = `Yields ${currentRecipe.yieldAmount} ${portionUnit(currentRecipe.yieldMeasureType, currentRecipe.yieldUnit, currentRecipe.yieldAmount)}`;
+    document.getElementById('rd_costperbase').textContent = `${fmtMoney2(currentRecipe.costPerBase)} per ${portionRateUnit(currentRecipe.yieldMeasureType)}`;
     document.getElementById('sc_target').value = currentRecipe.yieldAmount;
-    document.getElementById('sc_unit').value = currentRecipe.yieldUnit;
+    document.getElementById('sc_unit').value = portionUnit(currentRecipe.yieldMeasureType, currentRecipe.yieldUnit);
     renderScale();
   }
 
@@ -404,7 +404,7 @@
     } else {
       currentScaleFactor = target / currentRecipe.yieldAmount;
       factorNote.textContent = currentScaleFactor === 1 ? 'Recipe lines and the total cost below update live to this yield.'
-        : `${currentRecipe.yieldAmount} ${currentRecipe.yieldUnit} → ${target} ${currentRecipe.yieldUnit} = ×${fmtQty(currentScaleFactor)}`;
+        : `${currentRecipe.yieldAmount} ${portionUnit(currentRecipe.yieldMeasureType, currentRecipe.yieldUnit, currentRecipe.yieldAmount)} → ${target} ${portionUnit(currentRecipe.yieldMeasureType, currentRecipe.yieldUnit, target)} = ×${fmtQty(currentScaleFactor)}`;
     }
     document.getElementById('rd_totalcost').textContent = fmtMoney2(currentRecipe.totalCost * currentScaleFactor);
     renderLinesTable();
@@ -477,7 +477,8 @@
 
     let qtyCell = '', supCell = '';
     if (pick) {
-      const unitOpts = unitsForType(pick.measureType).map(u => `<option value="${u}" ${u === newLine.unit ? 'selected' : ''}>${unitLabel(pick.measureType, u)}</option>`).join('');
+      const unitLabelFor = pick.type === 'Recipe' ? (u => portionUnit(pick.measureType, u)) : (u => unitLabel(pick.measureType, u));
+      const unitOpts = unitsForType(pick.measureType).map(u => `<option value="${u}" ${u === newLine.unit ? 'selected' : ''}>${unitLabelFor(u)}</option>`).join('');
       qtyCell = `<span class="qty-cell">
         <input type="number" step="0.01" min="0" class="row-input" data-role="new-line-qty" value="${newLine.qty}" placeholder="Qty">
         <select class="row-select" data-role="new-line-unit">${unitOpts}</select>
@@ -621,9 +622,12 @@
   // never L). Always edits the line's real, unscaled amount, even when a
   // scale factor is currently being viewed.
   function quantityCellHTML(l, factor) {
+    const measureType = componentMeasureType(l);
+    // A sub-recipe's own Unit yield reads as "portions"; an ingredient counted in
+    // Unit (eggs, cloves, cans) stays "pc" — see portionUnit()'s doc comment.
+    const unitFor = (u, amount) => l.componentType === 'Recipe' ? portionUnit(measureType, u, amount) : unitLabel(measureType, u);
     if (editingQtyLineId === l.id) {
-      const measureType = componentMeasureType(l);
-      const unitOpts = unitsForType(measureType).map(u => `<option value="${u}" ${u === l.unit ? 'selected' : ''}>${unitLabel(measureType, u)}</option>`).join('');
+      const unitOpts = unitsForType(measureType).map(u => `<option value="${u}" ${u === l.unit ? 'selected' : ''}>${unitFor(u)}</option>`).join('');
       return `<span style="display:flex; flex-direction:column; gap:2px;">
         <span style="display:flex; align-items:center; gap:4px;">
           <input type="number" step="0.01" min="0" data-role="qty-edit-input" data-id="${l.id}" value="${l.quantity}" style="width:70px;">
@@ -634,7 +638,8 @@
         ${factor !== 1 ? '<span style="font-size:11px; color:var(--muted);">Editing the base amount, not the scaled view</span>' : ''}
       </span>`;
     }
-    return `<button type="button" data-role="edit-qty" data-id="${l.id}" title="Click to change quantity or unit" style="background:none; border:none; cursor:pointer; padding:0; font:inherit; text-decoration:underline dotted; color:inherit;">${fmtQty(l.quantity * factor)} ${l.unit}</button>`;
+    const shownQty = fmtQty(l.quantity * factor);
+    return `<button type="button" data-role="edit-qty" data-id="${l.id}" title="Click to change quantity or unit" style="background:none; border:none; cursor:pointer; padding:0; font:inherit; text-decoration:underline dotted; color:inherit;">${shownQty} ${unitFor(l.unit, shownQty)}</button>`;
   }
 
   function renderLinesTable() {
@@ -642,7 +647,7 @@
     const body = document.getElementById('linesBody');
     const factor = currentScaleFactor;
     const rowsHtml = currentLines.map((l) => {
-      const rateUnit = baseUnitFor(componentMeasureType(l));
+      const rateUnit = l.componentType === 'Recipe' ? portionRateUnit(componentMeasureType(l)) : baseUnitFor(componentMeasureType(l));
       // "Not linked": an ingredient line with no priced supplier currently selected —
       // same condition supplierCellHTML uses to decide the checkmark vs "+" icon.
       const unlinked = l.componentType === 'Ingredient' && !supplierIngredients.find(s => s.id === l.supplierId);

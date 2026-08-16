@@ -52,7 +52,7 @@
           </div>
         </div>
       </div>
-      <p class="hint">E.g. if the recipe yields 12 pc and you're serving 60 people, enter 60. If it yields 2 kg and you need 5 kg, enter 5.</p>
+      <p class="hint">E.g. if the recipe yields 12 portions and you're serving 60 people, enter 60. If it yields 2 kg and you need 5 kg, enter 5.</p>
       <button type="button" id="mi_addBtn">Add to menu</button>
       <div id="mi_status" class="status-line"></div>
     </div>
@@ -78,7 +78,7 @@
 
 <script src="js/config.js?v=2"></script>
 <script src="js/sheets.js?v=2"></script>
-<script src="js/units.js?v=3"></script>
+<script src="js/units.js?v=4"></script>
 <script src="js/dialog-guard.js"></script>
 <script src="js/ingredient-modal.js?v=3"></script>
 <script>
@@ -154,7 +154,7 @@
   function renderRecipeSelect() {
     const sel = document.getElementById('mi_recipe');
     sel.innerHTML = recipesAll.length
-      ? '<option value="">Choose a recipe...</option>' + recipesAll.map(r => `<option value="${r.id}">${r.name} — ${r.type} (yields ${r.yieldAmount} ${r.yieldUnit})</option>`).join('')
+      ? '<option value="">Choose a recipe...</option>' + recipesAll.map(r => `<option value="${r.id}">${r.name} — ${r.type} (yields ${r.yieldAmount} ${portionUnit(r.yieldMeasureType, r.yieldUnit, r.yieldAmount)})</option>`).join('')
       : '<option value="">No recipes yet — create one on the Recipes page</option>';
     updateUnitHint();
   }
@@ -162,7 +162,7 @@
   document.getElementById('mi_recipe').addEventListener('change', updateUnitHint);
   function updateUnitHint() {
     const rec = recipeById(document.getElementById('mi_recipe').value);
-    document.getElementById('mi_unit').textContent = rec ? rec.yieldUnit : '—';
+    document.getElementById('mi_unit').textContent = rec ? portionUnit(rec.yieldMeasureType, rec.yieldUnit) : '—';
   }
 
   // ---------- Menu ----------
@@ -195,8 +195,8 @@
       return `
         <tr>
           <td>${rec ? `<a href="recipes.html?open=${encodeURIComponent(rec.id)}" target="_blank" class="cell-main">${rec.name}</a><span class="cell-sub">${rec.type}</span>` : m.recipeId}</td>
-          <td>${m.qty} ${rec ? rec.yieldUnit : ''}</td>
-          <td class="num"><span class="cell-main">${fmtMoney2(cost)}</span>${rec ? `<span class="cell-sub">${fmtMoney2(rec.costPerBase)} per ${baseUnitFor(rec.yieldMeasureType)}</span>` : ''}</td>
+          <td>${m.qty} ${rec ? portionUnit(rec.yieldMeasureType, rec.yieldUnit, m.qty) : ''}</td>
+          <td class="num"><span class="cell-main">${fmtMoney2(cost)}</span>${rec ? `<span class="cell-sub">${fmtMoney2(rec.costPerBase)} per ${portionRateUnit(rec.yieldMeasureType)}</span>` : ''}</td>
           <td><button type="button" class="secondary" data-idx="${idx}" style="margin:0; padding:5px 10px;">Remove</button></td>
         </tr>`;
     }).join('');

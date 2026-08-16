@@ -28,6 +28,21 @@ function unitLabel(measureType, unit) {
   return (measureType === 'Weight' && (unit === 'tsp' || unit === 'tbsp')) ? unit + ' (≈ avg.)' : unit;
 }
 
+// A recipe/sub-recipe's own yield, measured in "Unit", is counted in portions —
+// callers use this instead of unitLabel() specifically for a recipe's yield amount
+// (pluralised when `amount` is given). Ingredient-level piece counts (eggs, cloves,
+// cans) are a different thing and keep the plain "pc" from unitLabel().
+function portionUnit(measureType, unit, amount) {
+  if (measureType !== 'Unit' || unit !== 'pc') return unitLabel(measureType, unit);
+  return amount === 1 ? 'portion' : 'portions';
+}
+
+// Same idea for a "£x per <unit>" rate — singular, matching how "per kg"/"per L"
+// already read.
+function portionRateUnit(measureType) {
+  return measureType === 'Unit' ? 'portion' : baseUnitFor(measureType);
+}
+
 // Converts an amount in `unit` to the family's base unit (kg, L, or pc).
 function toBaseAmount(measureType, amount, unit) {
   const fam = MEASURE_FAMILIES[measureType];
