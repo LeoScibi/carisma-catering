@@ -434,8 +434,26 @@ dialog::backdrop { background: rgba(31,58,43,0.35); }
 #reviewTable td { vertical-align: middle; }
 
 /* Wider dialogs for the recipe detail and paste importer */
-#recipeDialog { max-width: 720px; }
+#recipeDialog { max-width: 800px; }
 #pasteDialog { max-width: 880px; }
+
+/* Recipe detail: content on the left, its actions in a fixed rail on the right
+   instead of buttons interleaved through the content. */
+.recipe-detail { display: flex; gap: 24px; align-items: flex-start; }
+.recipe-detail-main { flex: 1; min-width: 0; }
+.recipe-detail-actions {
+  flex: 0 0 152px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 2px;
+}
+.recipe-detail-actions button { margin: 0; width: 100%; }
+@media (max-width: 640px) {
+  .recipe-detail { flex-direction: column-reverse; }
+  .recipe-detail-actions { flex-direction: row; flex-wrap: wrap; width: 100%; }
+  .recipe-detail-actions button { width: auto; flex: 1 1 auto; }
+}
 
 /* Recipe lines: drag-to-reorder handle, inline component swap, and the
    trailing type-to-add row (see recipes.html renderLinesTable/newRowHTML). */
