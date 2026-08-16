@@ -430,12 +430,18 @@ dialog::backdrop { background: rgba(31,58,43,0.35); }
 .dialog-section h3 { font-family: var(--serif); font-weight: 500; font-size: 15px; margin: 14px 0 6px; color: var(--textDark); }
 
 /* Compact controls inside the paste-review table */
-#reviewTable td select, #reviewTable td input { padding: 6px 8px; font-size: 13px; margin-top: 0; box-shadow: none; }
-#reviewTable td { vertical-align: middle; }
+#rmp_reviewTable td select, #rmp_reviewTable td input { padding: 6px 8px; font-size: 13px; margin-top: 0; box-shadow: none; }
+#rmp_reviewTable td { vertical-align: middle; }
 
-/* Wider dialogs for the recipe detail and paste importer */
-#recipeDialog { max-width: 800px; }
-#pasteDialog { max-width: 880px; }
+/* Wider dialog for the paste importer (its review table needs the room) */
+#rmPasteDialog { max-width: 880px; }
+
+/* The three shared per-item detail cards (Recipe/Ingredient/Supplier) — a
+   consistent 70% of the viewport on desktop/tablet; on mobile they fall
+   back to the plain dialog rule above (near-full-width). */
+@media (min-width: 641px) {
+  #rmDialog, #imDialog, #smDialog { max-width: 70vw; }
+}
 
 /* Recipe detail: content on the left, its actions in a fixed rail on the right
    instead of buttons interleaved through the content. */
@@ -457,16 +463,16 @@ dialog::backdrop { background: rgba(31,58,43,0.35); }
 
 /* Recipe lines: drag-to-reorder handle, inline component swap, and the
    trailing type-to-add row (see recipes.html renderLinesTable/newRowHTML). */
-#linesTable td.drag-col { width: 20px; padding: 10px 0 10px 8px; }
+#rm_linesTable td.drag-col { width: 20px; padding: 10px 0 10px 8px; }
 .drag-handle { cursor: grab; color: var(--textMuted2); font-family: var(--mono); font-size: 12px; line-height: 1; user-select: none; }
 .drag-handle:active { cursor: grabbing; }
-#linesBody tr.dragging { opacity: 0.4; }
-#linesBody tr.drop-above { box-shadow: inset 0 2px 0 0 var(--green600); }
-#linesBody tr.drop-below { box-shadow: inset 0 -2px 0 0 var(--green600); }
+#rm_linesBody tr.dragging { opacity: 0.4; }
+#rm_linesBody tr.drop-above { box-shadow: inset 0 2px 0 0 var(--green600); }
+#rm_linesBody tr.drop-below { box-shadow: inset 0 -2px 0 0 var(--green600); }
 
 /* Subtle flag for an ingredient line with no priced supplier currently linked. */
-#linesBody tr.line-unlinked td { background: rgba(181, 83, 42, 0.05); }
-#linesBody tr.line-unlinked:hover td { background: rgba(181, 83, 42, 0.09); }
+#rm_linesBody tr.line-unlinked td { background: rgba(181, 83, 42, 0.05); }
+#rm_linesBody tr.line-unlinked:hover td { background: rgba(181, 83, 42, 0.09); }
 
 .search-wrap { position: relative; display: inline-block; width: 100%; }
 .row-input, .row-select {
@@ -510,7 +516,7 @@ dialog::backdrop { background: rgba(31,58,43,0.35); }
 .search-option:hover, .search-option.active { background: var(--paper2); }
 .search-empty { padding: 10px 12px; font-size: 12.5px; color: var(--textMuted2); }
 
-#linesBody tr.new-row td { border-bottom: none; }
+#rm_linesBody tr.new-row td { border-bottom: none; }
 
 /* Inline dietary checkboxes */
 .checks { display: flex; gap: 18px; flex-wrap: wrap; margin-top: 14px; }
