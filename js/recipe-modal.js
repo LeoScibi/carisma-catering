@@ -32,6 +32,7 @@
   let editingComponentLineId = null;
   let swapQuery = '';
   let draggingLineId = null;
+  let editingName = false;
   let newLine = { query: '', pick: null, qty: '', unit: '', supplierId: '' };
   let parsedRows = [];
   let currentScaleFactor = 1;
@@ -59,7 +60,7 @@
     document.body.insertAdjacentHTML('beforeend', `
       <dialog id="rmDialog">
         <div class="dialog-head">
-          <h2 id="rm_title">Recipe</h2>
+          <div id="rm_titleWrap"></div>
           <button type="button" class="dialog-close" id="rm_close" aria-label="Close">&times;</button>
         </div>
         <div class="dialog-body recipe-detail">
@@ -70,10 +71,10 @@
             </div>
             <div class="totals">
               <div class="line grand"><span>Total cost</span><span id="rm_totalcost">£0.00</span></div>
-              <div class="line"><span>Cost per base unit</span><span id="rm_costperbase">£0.00</span></div>
+              <div class="line" id="rm_costperbaseLine"><span>Cost per base unit</span><span id="rm_costperbase">£0.00</span></div>
             </div>
 
-            <div class="dialog-section">
+            <div class="dialog-section" id="rm_scaleSection">
               <h3 style="margin-top:0;">Scale this recipe</h3>
               <div class="field-row">
                 <div>
@@ -195,13 +196,61 @@
   }
 
   // ---------- Recipe detail ----------
+  // A Menu's yield is a fixed 1pc placeholder (it's a container of dishes, not
+  // something with a real portion size) — the yield badge, cost-per-base line
+  // and scale section are all meaningless for it, so they're hidden.
+  function renderTitle() {
+    const wrap = document.getElementById('rm_titleWrap');
+    if (editingName) {
+      wrap.innerHTML = `
+        <span style="display:flex; align-items:center; gap:6px;">
+          <input type="text" id="rm_name_input" value="${escapeAttr(currentRecipe.name)}" style="font-family:var(--serif); font-size:19px; padding:4px 8px; margin:0; width:auto; min-width:220px;">
+          <button type="button" id="rm_name_save" title="Save" style="margin:0; padding:6px 11px; height:auto;">&#10003;</button>
+          <button type="button" class="secondary" id="rm_name_cancel" title="Cancel" style="margin:0; padding:6px 11px; height:auto;">&times;</button>
+        </span>`;
+      const input = document.getElementById('rm_name_input');
+      input.focus();
+      input.select();
+    } else {
+      wrap.innerHTML = `<h2 id="rm_title" style="cursor:pointer;" title="Click to rename">${currentRecipe.name}</h2>`;
+    }
+  }
+
+  async function commitRename() {
+    const input = document.getElementById('rm_name_input');
+    if (!input || !currentRecipe) return;
+    const newName = input.value.trim();
+    if (!newName) { setStatus('rm_ln_status', 'Name cannot be empty.', 'error'); return; }
+    if (newName === currentRecipe.name) { editingName = false; renderTitle(); return; }
+    const cfg = getStoredConfig();
+    setStatus('rm_ln_status', 'Renaming...');
+    try {
+      const recRows = await sheetsGet(cfg.spreadsheetId, REC_RANGE, token);
+      const rowIndex = recRows.findIndex((r, i) => i > 0 && r[0] === currentRecipe.id);
+      if (rowIndex === -1) throw new Error('Could not find this recipe\'s row to update.');
+      await sheetsUpdateRange(cfg.spreadsheetId, `Recipes!B${rowIndex + 1}:B${rowIndex + 1}`, [[newName]], token, 'USER_ENTERED');
+      editingName = false;
+      await refreshCurrentRecipe();
+      setStatus('rm_ln_status', 'Renamed.', 'ok');
+      onChangeCb && onChangeCb({ action: 'saved', id: currentRecipe ? currentRecipe.id : null });
+    } catch (err) {
+      setStatus('rm_ln_status', 'Error renaming: ' + err.message, 'error');
+    }
+  }
+
   function renderRecipeDetail() {
-    document.getElementById('rm_title').textContent = currentRecipe.name;
+    renderTitle();
     document.getElementById('rm_type').textContent = currentRecipe.type;
-    document.getElementById('rm_yield').textContent = `Yields ${currentRecipe.yieldAmount} ${portionUnit(currentRecipe.yieldMeasureType, currentRecipe.yieldUnit, currentRecipe.yieldAmount)}`;
-    document.getElementById('rm_costperbase').textContent = `${fmtMoney2(currentRecipe.costPerBase)} per ${portionRateUnit(currentRecipe.yieldMeasureType)}`;
-    document.getElementById('rm_sc_target').value = currentRecipe.yieldAmount;
-    document.getElementById('rm_sc_unit').value = portionUnit(currentRecipe.yieldMeasureType, currentRecipe.yieldUnit);
+    const isMenu = currentRecipe.type === 'Menu';
+    document.getElementById('rm_yield').style.display = isMenu ? 'none' : 'inline-block';
+    document.getElementById('rm_costperbaseLine').style.display = isMenu ? 'none' : 'flex';
+    document.getElementById('rm_scaleSection').style.display = isMenu ? 'none' : 'block';
+    if (!isMenu) {
+      document.getElementById('rm_yield').textContent = `Yields ${currentRecipe.yieldAmount} ${portionUnit(currentRecipe.yieldMeasureType, currentRecipe.yieldUnit, currentRecipe.yieldAmount)}`;
+      document.getElementById('rm_costperbase').textContent = `${fmtMoney2(currentRecipe.costPerBase)} per ${portionRateUnit(currentRecipe.yieldMeasureType)}`;
+      document.getElementById('rm_sc_target').value = currentRecipe.yieldAmount;
+      document.getElementById('rm_sc_unit').value = portionUnit(currentRecipe.yieldMeasureType, currentRecipe.yieldUnit);
+    }
     renderScale();
   }
 
@@ -223,8 +272,10 @@
   // ---------- Component search (shared by the trailing add-row and swap) ----------
   function searchableComponents() {
     const ingredientItems = ingredients.map(i => ({ type: 'Ingredient', id: i.id, name: i.name, measureType: i.measureType }));
+    // Menus are a container above the recipe layer, not a component — never
+    // addable as a line inside another recipe (or another menu).
     const recipeItems = recipesAll
-      .filter(r => !currentRecipe || r.id !== currentRecipe.id)
+      .filter(r => (!currentRecipe || r.id !== currentRecipe.id) && r.type !== 'Menu')
       .map(r => ({ type: 'Recipe', id: r.id, name: r.name, measureType: r.yieldMeasureType }));
     return ingredientItems.concat(recipeItems);
   }
@@ -1042,6 +1093,18 @@
     document.getElementById('rm_close').addEventListener('click', () => dialogEl.close());
     dialogEl.addEventListener('click', (e) => { if (e.target === dialogEl) dialogEl.close(); });
 
+    const titleWrap = document.getElementById('rm_titleWrap');
+    titleWrap.addEventListener('click', (e) => {
+      if (e.target.closest('#rm_title')) { editingName = true; renderTitle(); }
+      else if (e.target.closest('#rm_name_save')) { commitRename(); }
+      else if (e.target.closest('#rm_name_cancel')) { editingName = false; renderTitle(); }
+    });
+    titleWrap.addEventListener('keydown', (e) => {
+      if (e.target.id !== 'rm_name_input') return;
+      if (e.key === 'Enter') { e.preventDefault(); commitRename(); }
+      else if (e.key === 'Escape') { editingName = false; renderTitle(); }
+    });
+
     document.getElementById('rm_sc_target').addEventListener('input', renderScale);
     document.getElementById('rm_refreshCostsBtn').addEventListener('click', refreshLineCosts);
     document.getElementById('rm_deleteRecipeBtn').addEventListener('click', deleteRecipe);
@@ -1281,6 +1344,7 @@
     editingComponentLineId = null;
     editingSupplierLineId = null;
     editingQtyLineId = null;
+    editingName = false;
     newLine = { query: '', pick: null, qty: '', unit: '', supplierId: '' };
     setStatus('rm_ln_status', 'Loading...');
     if (!dialogEl.open) dialogEl.showModal();
