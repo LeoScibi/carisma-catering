@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300;9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=9">
+<link rel="stylesheet" href="css/style.css?v=10">
 </head>
 <body>
 
@@ -38,10 +38,31 @@
   <div class="toolbar" id="toolbar" style="display:none;">
     <button type="button" id="openAddBtn" class="add-btn"><span class="plus">+</span> Add ingredient</button>
     <button type="button" id="reloadBtn" class="secondary">Reload list</button>
+    <div class="col-picker-wrap">
+      <button type="button" id="columnsBtn" class="secondary">Columns</button>
+      <div class="col-menu" id="columnsMenu" hidden></div>
+    </div>
+  </div>
+
+  <div class="filter-bar" id="filterBar" style="display:none;">
+    <input type="search" id="f_search" placeholder="Search name, category, storage...">
+    <select id="f_filterMeasure">
+      <option value="">All measure types</option>
+      <option value="Weight">Weight</option>
+      <option value="Volume">Volume</option>
+      <option value="Unit">Unit</option>
+    </select>
+    <select id="f_filterCategory"><option value="">All categories</option></select>
+    <div class="checks">
+      <label><input type="checkbox" id="f_filterVegan"> Vegan</label>
+      <label><input type="checkbox" id="f_filterVegetarian"> Vegetarian</label>
+      <label><input type="checkbox" id="f_filterGlutenfree"> Gluten-free</label>
+    </div>
   </div>
 
   <h2>All ingredients</h2>
   <div id="pageStatus" class="status-line"></div>
+  <div id="filterStatus" class="status-line"></div>
   <p class="sub" id="listHint" style="display:none;">Click any ingredient to view details, edit it, or link a supplier.</p>
   <table id="rowsTable" class="clickable" style="display:none;">
     <thead><tr id="tableHead"></tr></thead>
@@ -89,6 +110,22 @@
           <label><input type="checkbox" id="f_vegetarian"> Vegetarian</label>
           <label><input type="checkbox" id="f_glutenfree"> Gluten-free</label>
         </div>
+
+        <div class="dialog-section">
+          <h3>Add to a supplier's price list</h3>
+          <p class="hint">Optional — links this ingredient to a supplier's price the moment it's created (the ingredient is created first, then added to the price list). Leave the supplier as "Don't add to a price list" to just create the ingredient; you can link suppliers any time from its detail page.</p>
+          <div class="field-row">
+            <div><label style="margin-top:0;">Supplier</label><select id="f_l_supplier"><option value="">Don't add to a price list</option></select></div>
+            <div></div>
+          </div>
+          <div class="field-row three">
+            <div><label>Pack size</label><input id="f_l_packsize" type="number" step="0.01" min="0"></div>
+            <div><label>Pack unit</label><select id="f_l_packunit"><option value="">Choose measure type first</option></select></div>
+            <div><label>Price (£)</label><input id="f_l_price" type="number" step="0.01" min="0"></div>
+          </div>
+          <div class="totals"><div class="line"><span>Cost per base unit</span><span id="f_l_cost">—</span></div></div>
+        </div>
+
         <button type="submit" id="addBtn">Add ingredient</button>
         <button type="button" id="cancelAddBtn" class="secondary">Cancel</button>
       </form>
@@ -106,11 +143,48 @@
 <script>
   const RANGE = 'Ingredients!A:K';
   const HEADERS = ['ID','NAME','CATEGORY','MEASURE TYPE','BASE UNIT','DESCRIPTION','STORAGE','SHELF LIFE','VEGAN','VEGETARIAN','GLUTEN FREE'];
+  const SI_RANGE = 'SupplierIngredients!A:G';
+  const SI_HEADERS = ['ID','INGREDIENT ID','SUPPLIER ID','PACK SIZE','PACK UNIT','PRICE','COST PER BASE UNIT'];
+  const SUP_RANGE = 'Suppliers!A:D';
+
+  // Toggleable table columns — NAME (idx 1) always shows and CATEGORY (idx 2)
+  // is always folded into it, so neither is listed here.
+  const COLUMN_DEFS = [
+    { key: 'ID', idx: 0, label: 'ID' },
+    { key: 'MEASURE TYPE', idx: 3, label: 'Measure type' },
+    { key: 'BASE UNIT', idx: 4, label: 'Base unit' },
+    { key: 'DESCRIPTION', idx: 5, label: 'Description' },
+    { key: 'STORAGE', idx: 6, label: 'Storage' },
+    { key: 'SHELF LIFE', idx: 7, label: 'Shelf life' },
+    { key: 'VEGAN', idx: 8, label: 'Vegan' },
+    { key: 'VEGETARIAN', idx: 9, label: 'Vegetarian' },
+    { key: 'GLUTEN FREE', idx: 10, label: 'Gluten-free' }
+  ];
+  const COL_PREFS_KEY = 'carisma.ingredients.columns';
+  const DEFAULT_HIDDEN_COLUMNS = ['DESCRIPTION']; // unused/empty by default — hidden until someone opts in
 
   const status = document.getElementById('status');
   const pageStatus = document.getElementById('pageStatus');
+  const filterStatus = document.getElementById('filterStatus');
   let token = null;
   let cachedRows = [HEADERS];
+  let suppliers = []; // {id, name}
+  let columnPrefs = loadColumnPrefs();
+
+  function flagChecked(v) { return ['yes', 'checked', 'true', 'x', '1', 'y'].includes((v || '').toString().trim().toLowerCase()); }
+
+  function loadColumnPrefs() {
+    try {
+      const raw = localStorage.getItem(COL_PREFS_KEY);
+      if (raw) return JSON.parse(raw);
+    } catch (e) {}
+    const prefs = {};
+    COLUMN_DEFS.forEach(c => { prefs[c.key] = !DEFAULT_HIDDEN_COLUMNS.includes(c.key); });
+    return prefs;
+  }
+  function saveColumnPrefs() {
+    try { localStorage.setItem(COL_PREFS_KEY, JSON.stringify(columnPrefs)); } catch (e) {}
+  }
 
   // Status inside the Add dialog (in-progress / validation / add errors).
   function setStatus(msg, kind) {
@@ -130,29 +204,35 @@
     if (!token || !cfg.spreadsheetId) {
       document.getElementById('signedOutNotice').style.display = 'block';
       document.getElementById('toolbar').style.display = 'none';
+      document.getElementById('filterBar').style.display = 'none';
       return false;
     }
     document.getElementById('signedOutNotice').style.display = 'none';
     document.getElementById('toolbar').style.display = 'flex';
+    document.getElementById('filterBar').style.display = 'flex';
     return true;
   }
 
   const addDialog = document.getElementById('addDialog');
   const addDialogGuard = attachDiscardGuard(addDialog);
 
-  function openAddDialog() {
+  async function openAddDialog() {
     if (!requireAuth()) return;
     setStatus('');
     populateCategories(cachedRows);
+    refreshAddPackUnitOptions();
     addDialog.showModal();
     addDialogGuard.arm();
     document.getElementById('f_name').focus();
+    await loadSuppliersForAddDialog();
   }
 
   // Runs after every real close (button, ESC, backdrop, or Discard) — not on open.
   addDialog.addEventListener('close', () => {
     document.getElementById('addForm').reset();
     document.getElementById('f_baseunit').value = '';
+    document.getElementById('f_l_packunit').innerHTML = '<option value="">Choose measure type first</option>';
+    document.getElementById('f_l_cost').textContent = '—';
     setStatus('');
   });
 
@@ -162,7 +242,49 @@
 
   document.getElementById('f_measuretype').addEventListener('change', (e) => {
     document.getElementById('f_baseunit').value = baseUnitFor(e.target.value);
+    refreshAddPackUnitOptions();
   });
+
+  // Suppliers for the optional "add to a price list" section of the Add dialog.
+  async function loadSuppliersForAddDialog() {
+    const cfg = getStoredConfig();
+    try {
+      const rows = await sheetsGet(cfg.spreadsheetId, SUP_RANGE, token);
+      suppliers = (rows.slice(1) || []).map(r => ({ id: r[0], name: r[1] })).filter(s => s.id);
+    } catch (err) {
+      suppliers = [];
+    }
+    const sel = document.getElementById('f_l_supplier');
+    sel.innerHTML = '<option value="">Don\'t add to a price list</option>' +
+      suppliers.map(s => `<option value="${s.id}">${s.name}</option>`).join('');
+  }
+
+  function refreshAddPackUnitOptions() {
+    const mt = document.getElementById('f_measuretype').value;
+    const sel = document.getElementById('f_l_packunit');
+    sel.innerHTML = mt
+      ? unitsForType(mt).map(u => `<option value="${u}">${unitLabel(mt, u)}</option>`).join('')
+      : '<option value="">Choose measure type first</option>';
+    recalcAddLink();
+  }
+
+  function recalcAddLink() {
+    const mt = document.getElementById('f_measuretype').value;
+    const packSize = parseFloat(document.getElementById('f_l_packsize').value);
+    const packUnit = document.getElementById('f_l_packunit').value;
+    const price = parseFloat(document.getElementById('f_l_price').value);
+    const box = document.getElementById('f_l_cost');
+    if (!mt || !packSize || !packUnit || !price) { box.textContent = '—'; return null; }
+    const baseAmount = toBaseAmount(mt, packSize, packUnit);
+    if (!baseAmount) { box.textContent = '—'; return null; }
+    const costPerBase = price / baseAmount;
+    box.textContent = `${fmtMoney2(costPerBase)} per ${baseUnitFor(mt)}`;
+    return costPerBase;
+  }
+
+  ['f_l_packsize', 'f_l_packunit', 'f_l_price'].forEach(id =>
+    document.getElementById(id).addEventListener('input', recalcAddLink)
+  );
 
   // Fills the category combobox with the distinct categories already in use,
   // so existing ones are one click away while a brand-new one can still be typed.
@@ -175,6 +297,21 @@
     const options = [...seen].sort((a, b) => a.localeCompare(b));
     document.getElementById('categoryOptions').innerHTML =
       options.map(c => `<option value="${c.replace(/"/g, '&quot;')}"></option>`).join('');
+  }
+
+  // Same distinct-category list, but as the filter bar's dropdown options.
+  function populateCategoryFilterOptions(rows) {
+    const sel = document.getElementById('f_filterCategory');
+    const prevValue = sel.value;
+    const seen = new Set();
+    for (let i = 1; i < rows.length; i++) {
+      const cat = (rows[i][2] || '').toString().trim();
+      if (cat) seen.add(cat);
+    }
+    const options = [...seen].sort((a, b) => a.localeCompare(b));
+    sel.innerHTML = '<option value="">All categories</option>' +
+      options.map(c => `<option value="${c.replace(/"/g, '&quot;')}">${c}</option>`).join('');
+    if (options.includes(prevValue)) sel.value = prevValue;
   }
 
   async function loadRows() {
@@ -190,13 +327,76 @@
         await sheetsUpdateRange(cfg.spreadsheetId, 'Ingredients!A1:K1', [HEADERS], token, 'USER_ENTERED');
         cachedRows[0] = HEADERS.slice();
       }
-      renderTable(cachedRows);
       populateCategories(cachedRows);
+      populateCategoryFilterOptions(cachedRows);
+      renderFilteredTable();
       setPageStatus(`Loaded ${Math.max(cachedRows.length - 1, 0)} ingredient(s).`, 'ok');
     } catch (err) {
       setPageStatus('Error loading: ' + err.message, 'error');
     }
   }
+
+  // Applies the search box + measure type/category/dietary filters to cachedRows.
+  function applyFilters(rows) {
+    const [header, ...rest] = rows;
+    const q = document.getElementById('f_search').value.trim().toLowerCase();
+    const measureFilter = document.getElementById('f_filterMeasure').value;
+    const categoryFilter = document.getElementById('f_filterCategory').value;
+    const vegan = document.getElementById('f_filterVegan').checked;
+    const vegetarian = document.getElementById('f_filterVegetarian').checked;
+    const glutenfree = document.getElementById('f_filterGlutenfree').checked;
+
+    const filtered = rest.filter(r => {
+      if (q) {
+        const haystack = [r[1], r[2], r[6]].filter(Boolean).join(' ').toLowerCase();
+        if (!haystack.includes(q)) return false;
+      }
+      if (measureFilter && r[3] !== measureFilter) return false;
+      if (categoryFilter && (r[2] || '') !== categoryFilter) return false;
+      if (vegan && !flagChecked(r[8])) return false;
+      if (vegetarian && !flagChecked(r[9])) return false;
+      if (glutenfree && !flagChecked(r[10])) return false;
+      return true;
+    });
+    return [header, ...filtered];
+  }
+
+  function renderFilteredTable() {
+    const filtered = applyFilters(cachedRows);
+    renderTable(filtered);
+    const total = Math.max(cachedRows.length - 1, 0);
+    const shown = Math.max(filtered.length - 1, 0);
+    filterStatus.textContent = (shown === total) ? '' : `Showing ${shown} of ${total} ingredient(s).`;
+    filterStatus.className = 'status-line';
+  }
+
+  ['f_search', 'f_filterMeasure', 'f_filterCategory', 'f_filterVegan', 'f_filterVegetarian', 'f_filterGlutenfree']
+    .forEach(id => document.getElementById(id).addEventListener('input', renderFilteredTable));
+
+  // --- Column visibility picker ---
+  function renderColumnsMenu() {
+    const menu = document.getElementById('columnsMenu');
+    menu.innerHTML = COLUMN_DEFS.map(c => `
+      <label><input type="checkbox" data-col="${c.key}" ${columnPrefs[c.key] !== false ? 'checked' : ''}> ${c.label}</label>
+    `).join('');
+  }
+  renderColumnsMenu();
+
+  document.getElementById('columnsBtn').addEventListener('click', (e) => {
+    e.stopPropagation();
+    document.getElementById('columnsMenu').hidden = !document.getElementById('columnsMenu').hidden;
+  });
+  document.addEventListener('click', (e) => {
+    const menu = document.getElementById('columnsMenu');
+    if (!menu.hidden && !e.target.closest('.col-picker-wrap')) menu.hidden = true;
+  });
+  document.getElementById('columnsMenu').addEventListener('change', (e) => {
+    const cb = e.target.closest('input[type="checkbox"][data-col]');
+    if (!cb) return;
+    columnPrefs[cb.dataset.col] = cb.checked;
+    saveColumnPrefs();
+    renderFilteredTable();
+  });
 
   function renderTable(rows) {
     const table = document.getElementById('rowsTable');
@@ -209,12 +409,18 @@
       return;
     }
     const [header, ...rest] = rows;
-    // CATEGORY (index 2) is folded into the NAME cell (index 1) as a sub-label,
-    // so it's skipped as its own column in both the head and body loops below.
-    head.innerHTML = header.map((h, i) => i === 2 ? '' : `<th>${h}</th>`).join('');
+    // CATEGORY (index 2) is always folded into the NAME cell (index 1) as a
+    // sub-label; NAME itself always shows. Every other column can be hidden
+    // via the Columns picker (columnPrefs, keyed by COLUMN_DEFS).
+    const visibleIdx = header.map((_, i) => i).filter(i => {
+      if (i === 2) return false;
+      if (i === 1) return true;
+      const def = COLUMN_DEFS.find(c => c.idx === i);
+      return !def || columnPrefs[def.key] !== false;
+    });
+    head.innerHTML = visibleIdx.map(i => `<th>${header[i]}</th>`).join('');
     body.innerHTML = rest.map((r) => {
-      const cells = header.map((_, i) => {
-        if (i === 2) return '';
+      const cells = visibleIdx.map(i => {
         if (i === 1) return `<td><span class="cell-main">${r[1] ?? ''}</span>${r[2] ? `<span class="cell-sub">${r[2]}</span>` : ''}</td>`;
         return `<td>${r[i] ?? ''}</td>`;
       }).join('');
@@ -239,6 +445,22 @@
     if (!name) { setStatus('Name is required.', 'error'); return; }
     if (!measureType) { setStatus('Measure type is required.', 'error'); return; }
 
+    // Optional: add this ingredient straight to a supplier's price list.
+    const supplierId = document.getElementById('f_l_supplier').value;
+    const packSize = parseFloat(document.getElementById('f_l_packsize').value);
+    const packUnit = document.getElementById('f_l_packunit').value;
+    const price = parseFloat(document.getElementById('f_l_price').value);
+    let costPerBase = null;
+    if (supplierId) {
+      if (!packSize || !packUnit || !price) {
+        setStatus('Pack size, pack unit and price are all required to add a supplier price.', 'error');
+        return;
+      }
+      const baseAmount = toBaseAmount(measureType, packSize, packUnit);
+      if (!baseAmount) { setStatus('Could not calculate cost per base unit — check the pack size/unit.', 'error'); return; }
+      costPerBase = price / baseAmount;
+    }
+
     const cfg = getStoredConfig();
     setStatus('Loading current list to assign an ID...');
     try {
@@ -262,11 +484,25 @@
 
       setStatus('Adding ingredient...');
       await sheetsAppend(cfg.spreadsheetId, RANGE, row, token);
+
+      // Ingredient exists now — link it to the chosen supplier's price list.
+      let priceMsg = '';
+      if (supplierId) {
+        setStatus('Adding supplier price...');
+        const siExisting = await sheetsGet(cfg.spreadsheetId, SI_RANGE, token);
+        const siRows = siExisting.length ? siExisting : [SI_HEADERS];
+        const siId = nextId(siRows, 'SI');
+        const siRow = [siId, id, supplierId, packSize, packUnit, price.toFixed(2), costPerBase.toFixed(4)];
+        await sheetsAppend(cfg.spreadsheetId, SI_RANGE, siRow, token);
+        const supName = (suppliers.find(s => s.id === supplierId) || {}).name || supplierId;
+        priceMsg = ` and linked to ${supName}`;
+      }
+
       addDialog.close();
       e.target.reset();
       document.getElementById('f_baseunit').value = '';
       await loadRows();
-      setPageStatus(`Ingredient ${id} added.`, 'ok');
+      setPageStatus(`Ingredient ${id} added${priceMsg}.`, 'ok');
     } catch (err) {
       setStatus('Error: ' + err.message, 'error');
     }

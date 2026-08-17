@@ -518,6 +518,33 @@ dialog::backdrop { background: rgba(31,58,43,0.35); }
 
 #rm_linesBody tr.new-row td { border-bottom: none; }
 
+/* Filter bar above a list (search + dropdown filters), and the Columns
+   visibility picker that sits in the toolbar next to it. */
+.filter-bar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin: 4px 0 10px; }
+.filter-bar input[type="search"] { width: 240px; margin-top: 0; }
+.filter-bar select { width: auto; min-width: 150px; margin-top: 0; }
+.filter-bar .checks { margin-top: 0; }
+
+.col-picker-wrap { position: relative; display: inline-block; }
+.col-menu {
+  position: absolute; right: 0; top: calc(100% + 6px);
+  background: var(--paper);
+  border: 1px solid var(--lineStrong);
+  border-radius: var(--rMd);
+  box-shadow: var(--shadowMd);
+  padding: 10px 14px;
+  z-index: 30;
+  min-width: 190px;
+}
+.col-menu label {
+  display: flex; align-items: center; gap: 8px;
+  font-family: var(--sans); font-size: 13px; font-weight: 500;
+  color: var(--textDark); text-transform: none; letter-spacing: normal;
+  margin: 8px 0;
+}
+.col-menu label:first-child { margin-top: 0; }
+.col-menu label:last-child { margin-bottom: 0; }
+
 /* Inline dietary checkboxes */
 .checks { display: flex; gap: 18px; flex-wrap: wrap; margin-top: 14px; }
 .checks label {
