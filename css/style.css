@@ -545,6 +545,10 @@ dialog::backdrop { background: rgba(31,58,43,0.35); }
 .col-menu label:first-child { margin-top: 0; }
 .col-menu label:last-child { margin-bottom: 0; }
 
+/* Highlights the saved-menu row currently open below the list (Menu Builder) */
+tr.active-row td { background: var(--green50); }
+tr.active-row:hover td { background: var(--green100); }
+
 /* Inline dietary checkboxes */
 .checks { display: flex; gap: 18px; flex-wrap: wrap; margin-top: 14px; }
 .checks label {

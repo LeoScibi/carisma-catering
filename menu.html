@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300;9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=10">
+<link rel="stylesheet" href="css/style.css?v=11">
 </head>
 <body>
 
@@ -28,7 +28,7 @@
 
 <main>
   <h1>Menu Builder</h1>
-  <p class="sub">Add recipes and how much of each you need, and get a consolidated shopping list — sub-recipes are expanded down to raw ingredients and quantities are combined across the whole menu. This page only reads your data; nothing is saved to the sheet, so it resets if you leave.</p>
+  <p class="sub">Create a menu, add existing recipes and how much of each you need, and get a consolidated shopping list — sub-recipes are expanded down to raw ingredients and quantities are combined across the whole menu. Menus are saved to your spreadsheet.</p>
 
   <div id="signedOutNotice" class="card" style="display:none;">
     <span class="badge off">Not signed in</span>
@@ -37,43 +37,77 @@
 
   <div id="appBody" style="display:none;">
 
-    <div class="card">
-      <h2 style="margin-top:0;">Add a recipe</h2>
-      <div class="field-row">
-        <div>
-          <label style="margin-top:0;">Recipe *</label>
-          <select id="mi_recipe"><option value="">Loading recipes...</option></select>
-        </div>
-        <div>
-          <label style="margin-top:0;">Quantity needed *</label>
-          <div style="display:flex; gap:8px; align-items:center;">
-            <input id="mi_qty" type="number" step="0.01" min="0" style="flex:1;">
-            <span id="mi_unit" style="color:var(--muted); font-size:13px; white-space:nowrap;">—</span>
+    <div class="toolbar" id="menuToolbar">
+      <button type="button" id="openNewMenuBtn" class="add-btn"><span class="plus">+</span> New menu</button>
+      <button type="button" id="reloadAllBtn" class="secondary">Reload</button>
+    </div>
+
+    <h2>Saved menus</h2>
+    <div id="pageStatus" class="status-line"></div>
+    <p class="sub" id="menusHint" style="display:none;">Click a menu to open it below.</p>
+    <table id="menusTable" class="clickable" style="display:none;">
+      <thead><tr><th>Menu</th><th>Items</th><th></th></tr></thead>
+      <tbody id="menusBody"></tbody>
+    </table>
+    <p class="sub" id="menusEmpty" style="display:none;">No menus yet — create one above.</p>
+
+    <div id="menuEditor" style="display:none;">
+      <div class="card">
+        <div id="me_nameWrap"></div>
+        <div class="field-row">
+          <div>
+            <label style="margin-top:0;">Recipe *</label>
+            <select id="mi_recipe"><option value="">Loading recipes...</option></select>
+          </div>
+          <div>
+            <label style="margin-top:0;">Quantity needed *</label>
+            <div style="display:flex; gap:8px; align-items:center;">
+              <input id="mi_qty" type="number" step="0.01" min="0" style="flex:1;">
+              <span id="mi_unit" style="color:var(--muted); font-size:13px; white-space:nowrap;">—</span>
+            </div>
           </div>
         </div>
+        <p class="hint">E.g. if the recipe yields 12 portions and you're serving 60 people, enter 60. If it yields 2 kg and you need 5 kg, enter 5.</p>
+        <button type="button" id="mi_addBtn">Add to menu</button>
+        <button type="button" id="closeMenuBtn" class="secondary">Close</button>
+        <div id="mi_status" class="status-line"></div>
       </div>
-      <p class="hint">E.g. if the recipe yields 12 portions and you're serving 60 people, enter 60. If it yields 2 kg and you need 5 kg, enter 5.</p>
-      <button type="button" id="mi_addBtn">Add to menu</button>
-      <div id="mi_status" class="status-line"></div>
-    </div>
 
-    <h2>Menu</h2>
-    <table id="menuTable" style="display:none;">
-      <thead><tr><th>Recipe</th><th>Quantity needed</th><th class="num">Est. cost</th><th></th></tr></thead>
-      <tbody id="menuBody"></tbody>
-    </table>
-    <p class="sub" id="menuEmpty">No recipes on the menu yet — add one above.</p>
-    <button type="button" id="clearMenuBtn" class="secondary" style="display:none;">Clear menu</button>
+      <h2>Menu items</h2>
+      <table id="menuTable" style="display:none;">
+        <thead><tr><th>Recipe</th><th>Quantity needed</th><th class="num">Est. cost</th><th></th></tr></thead>
+        <tbody id="menuBody"></tbody>
+      </table>
+      <p class="sub" id="menuEmpty">No recipes on this menu yet — add one above.</p>
 
-    <h2>Shopping list</h2>
-    <div id="shoppingWarnings"></div>
-    <div id="shoppingList"></div>
-    <div class="totals" id="shoppingTotals" style="display:none;">
-      <div class="line grand"><span>Estimated total cost</span><span id="sl_totalcost">£0.00</span></div>
+      <h2>Shopping list</h2>
+      <div id="shoppingWarnings"></div>
+      <div id="shoppingList"></div>
+      <div class="totals" id="shoppingTotals" style="display:none;">
+        <div class="line grand"><span>Estimated total cost</span><span id="sl_totalcost">£0.00</span></div>
+      </div>
+      <button type="button" id="copyListBtn" class="secondary" style="display:none;">Copy list as text</button>
+      <div id="copyStatus" class="status-line"></div>
     </div>
-    <button type="button" id="copyListBtn" class="secondary" style="display:none;">Copy list as text</button>
-    <div id="copyStatus" class="status-line"></div>
   </div>
+
+  <!-- New menu dialog -->
+  <dialog id="newMenuDialog">
+    <div class="dialog-head">
+      <h2>New menu</h2>
+      <button type="button" class="dialog-close" id="closeNewMenuBtn" aria-label="Close">&times;</button>
+    </div>
+    <div class="dialog-body">
+      <form id="newMenuForm">
+        <label style="margin-top:0;">Name *</label>
+        <input id="nm_name" required placeholder="e.g. Smith Wedding — 60 guests">
+        <p class="hint">Add recipes and their quantities below once it's created.</p>
+        <button type="submit" id="nm_addBtn">Create menu</button>
+        <button type="button" id="nm_cancelBtn" class="secondary">Cancel</button>
+      </form>
+      <div id="nm_status" class="status-line"></div>
+    </div>
+  </dialog>
 </main>
 
 <script src="js/config.js?v=2"></script>
@@ -89,6 +123,10 @@
   const SI_RANGE = 'SupplierIngredients!A:G';
   const REC_RANGE = 'Recipes!A:H';
   const RL_RANGE = 'RecipeLines!A:H';
+  const MENUS_RANGE = 'Menus!A:B';
+  const MENUS_HEADERS = ['ID','NAME'];
+  const ML_RANGE = 'MenuLines!A:D';
+  const ML_HEADERS = ['ID','MENU ID','RECIPE ID','QUANTITY'];
 
   let token = null;
   let ingredients = [];         // {id, name, category, measureType, baseUnit}
@@ -96,12 +134,21 @@
   let supplierIngredients = []; // {id, ingredientId, supplierId, costPerBase}
   let recipesAll = [];          // {id, name, type, yieldMeasureType, yieldAmount, yieldUnit, costPerBase}
   let allLines = [];            // every RecipeLines row: {recipeId, componentType, componentId, quantity, unit}
-  let menuItems = [];           // [{recipeId, qty}] — session-only
+  let menusAll = [];            // {id, name} — every saved menu
+  let allMenuLines = [];        // every MenuLines row: {id, rowIndex, menuId, recipeId, qty}
+  let openMenuId = null;        // which saved menu is currently open below the list
+  let editingMenuName = false;
+  let editingQtyLineId = null;
 
   const miStatus = document.getElementById('mi_status');
+  const nmStatus = document.getElementById('nm_status');
+  const pageStatus = document.getElementById('pageStatus');
   const copyStatus = document.getElementById('copyStatus');
   function setMiStatus(m, k) { miStatus.textContent = m; miStatus.className = 'status-line' + (k ? ' ' + k : ''); }
+  function setNmStatus(m, k) { nmStatus.textContent = m; nmStatus.className = 'status-line' + (k ? ' ' + k : ''); }
+  function setPageStatus(m, k) { pageStatus.textContent = m; pageStatus.className = 'status-line' + (k ? ' ' + k : ''); }
   function setCopyStatus(m, k) { copyStatus.textContent = m; copyStatus.className = 'status-line' + (k ? ' ' + k : ''); }
+  function escapeAttr(s) { return (s || '').toString().replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;'); }
 
   function requireAuth() {
     const cfg = getStoredConfig();
@@ -125,16 +172,19 @@
     return opts.reduce((a, b) => (b.costPerBase < a.costPerBase ? b : a));
   }
   function linesFor(recipeId) { return allLines.filter(l => l.recipeId === recipeId); }
+  function menuLinesFor(menuId) { return allMenuLines.filter(l => l.menuId === menuId); }
 
   // ---------- Load everything ----------
   async function loadAll() {
     const cfg = getStoredConfig();
-    const [ingRows, supRows, siRows, recRows, rlRows] = await Promise.all([
+    const [ingRows, supRows, siRows, recRows, rlRows, menuRows, mlRows] = await Promise.all([
       sheetsGet(cfg.spreadsheetId, ING_RANGE, token),
       sheetsGet(cfg.spreadsheetId, SUP_RANGE, token),
       sheetsGet(cfg.spreadsheetId, SI_RANGE, token),
       sheetsGet(cfg.spreadsheetId, REC_RANGE, token),
-      sheetsGet(cfg.spreadsheetId, RL_RANGE, token)
+      sheetsGet(cfg.spreadsheetId, RL_RANGE, token),
+      sheetsGet(cfg.spreadsheetId, MENUS_RANGE, token),
+      sheetsGet(cfg.spreadsheetId, ML_RANGE, token)
     ]);
     ingredients = (ingRows.slice(1) || []).map(r => ({ id: r[0], name: r[1], category: r[2] || 'Uncategorised', measureType: r[3], baseUnit: r[4] })).filter(i => i.id);
     suppliers = (supRows.slice(1) || []).map(r => ({ id: r[0], name: r[1] })).filter(s => s.id);
@@ -146,11 +196,237 @@
     allLines = (rlRows.slice(1) || []).map(r => ({
       recipeId: r[1], componentType: r[2], componentId: r[3], quantity: parseFloat(r[4]) || 0, unit: r[5]
     })).filter(l => l.recipeId);
+    menusAll = (menuRows.slice(1) || []).map(r => ({ id: r[0], name: r[1] })).filter(m => m.id);
+    allMenuLines = mlRows
+      .map((r, i) => ({ r, rowIndex: i }))
+      .filter(({ r, rowIndex }) => rowIndex > 0 && r[0])
+      .map(({ r, rowIndex }) => ({ id: r[0], rowIndex, menuId: r[1], recipeId: r[2], qty: parseFloat(r[3]) || 0 }));
 
     renderRecipeSelect();
-    // Drop any menu items whose recipe no longer exists, keep the rest.
-    menuItems = menuItems.filter(m => recipeById(m.recipeId));
-    renderMenu();
+    renderMenusList();
+    if (openMenuId && !menusAll.find(m => m.id === openMenuId)) openMenuId = null;
+    renderOpenMenu();
+  }
+
+  // ---------- Saved menus list ----------
+  function renderMenusList() {
+    const table = document.getElementById('menusTable');
+    const hint = document.getElementById('menusHint');
+    const empty = document.getElementById('menusEmpty');
+    if (!menusAll.length) {
+      table.style.display = 'none'; hint.style.display = 'none'; empty.style.display = 'block';
+      document.getElementById('menusBody').innerHTML = '';
+      return;
+    }
+    empty.style.display = 'none'; hint.style.display = 'block';
+    document.getElementById('menusBody').innerHTML = menusAll.map(m => {
+      const count = menuLinesFor(m.id).length;
+      return `
+        <tr data-id="${m.id}" class="${m.id === openMenuId ? 'active-row' : ''}">
+          <td><span class="cell-main">${m.name}</span></td>
+          <td>${count} item${count === 1 ? '' : 's'}</td>
+          <td style="white-space:nowrap;">
+            <button type="button" class="secondary" data-role="duplicate" data-id="${m.id}" style="margin:0; padding:5px 10px;">Duplicate</button>
+            <button type="button" class="secondary danger" data-role="delete" data-id="${m.id}" style="margin:0; padding:5px 10px;">Delete</button>
+          </td>
+        </tr>`;
+    }).join('');
+    table.style.display = 'table';
+  }
+
+  document.getElementById('menusBody').addEventListener('click', (e) => {
+    const dupBtn = e.target.closest('button[data-role="duplicate"]');
+    if (dupBtn) { duplicateMenu(dupBtn.dataset.id); return; }
+    const delBtn = e.target.closest('button[data-role="delete"]');
+    if (delBtn) { deleteMenu(delBtn.dataset.id); return; }
+    const tr = e.target.closest('tr[data-id]');
+    if (tr) { openMenuId = tr.dataset.id; renderMenusList(); renderOpenMenu(); }
+  });
+
+  // ---------- New menu ----------
+  const newMenuDialog = document.getElementById('newMenuDialog');
+  const newMenuDialogGuard = attachDiscardGuard(newMenuDialog);
+  document.getElementById('openNewMenuBtn').addEventListener('click', () => {
+    if (!requireAuth()) return;
+    setNmStatus('');
+    document.getElementById('newMenuForm').reset();
+    newMenuDialog.showModal();
+    newMenuDialogGuard.arm();
+    document.getElementById('nm_name').focus();
+  });
+  document.getElementById('closeNewMenuBtn').addEventListener('click', () => newMenuDialogGuard.guardedClose());
+  document.getElementById('nm_cancelBtn').addEventListener('click', () => newMenuDialogGuard.guardedClose());
+
+  document.getElementById('newMenuForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (!requireAuth()) return;
+    const name = document.getElementById('nm_name').value.trim();
+    if (!name) { setNmStatus('Name is required.', 'error'); return; }
+
+    const cfg = getStoredConfig();
+    setNmStatus('Creating menu...');
+    try {
+      const existing = await sheetsGet(cfg.spreadsheetId, MENUS_RANGE, token);
+      const rows = existing.length ? existing : [MENUS_HEADERS];
+      const id = nextId(rows, 'MENU');
+      await sheetsAppend(cfg.spreadsheetId, MENUS_RANGE, [id, name], token);
+      newMenuDialog.close();
+      openMenuId = id;
+      await loadAll();
+      setPageStatus(`Menu "${name}" created.`, 'ok');
+    } catch (err) {
+      setNmStatus('Error: ' + err.message, 'error');
+    }
+  });
+
+  // ---------- Duplicate / delete a saved menu ----------
+  async function duplicateMenu(menuId) {
+    const menu = menusAll.find(m => m.id === menuId);
+    if (!menu) return;
+    if (!confirm(`Duplicate "${menu.name}"? This copies its name and all items into a new menu.`)) return;
+    const cfg = getStoredConfig();
+    setPageStatus('Duplicating...');
+    try {
+      const [menuRows, mlRows] = await Promise.all([
+        sheetsGet(cfg.spreadsheetId, MENUS_RANGE, token),
+        sheetsGet(cfg.spreadsheetId, ML_RANGE, token)
+      ]);
+      const menuRowsList = menuRows.length ? menuRows : [MENUS_HEADERS];
+      const newId = nextId(menuRowsList, 'MENU');
+      const newName = `${menu.name} (copy)`;
+      await sheetsAppend(cfg.spreadsheetId, MENUS_RANGE, [newId, newName], token);
+
+      const sourceLines = mlRows.slice(1).filter(r => r[1] === menuId);
+      if (sourceLines.length) {
+        const mlRowsList = mlRows.length ? mlRows : [ML_HEADERS];
+        let n = 0;
+        for (let i = 1; i < mlRowsList.length; i++) {
+          const c = (mlRowsList[i][0] || '').toString();
+          if (c.startsWith('ML')) { const v = parseInt(c.slice(2), 10); if (!isNaN(v) && v > n) n = v; }
+        }
+        const newLines = sourceLines.map(r => { n += 1; return ['ML' + String(n).padStart(3, '0'), newId, r[2], r[3]]; });
+        await sheetsAppendRows(cfg.spreadsheetId, ML_RANGE, newLines, token);
+      }
+
+      openMenuId = newId;
+      await loadAll();
+      setPageStatus(`Duplicated as "${newName}".`, 'ok');
+    } catch (err) {
+      setPageStatus('Error duplicating: ' + err.message, 'error');
+    }
+  }
+
+  async function deleteMenu(menuId) {
+    const menu = menusAll.find(m => m.id === menuId);
+    if (!menu) return;
+    const count = menuLinesFor(menuId).length;
+    const msg = count ? `Delete "${menu.name}" and its ${count} item(s)? This can't be undone.` : `Delete "${menu.name}"? This can't be undone.`;
+    if (!confirm(msg)) return;
+    const cfg = getStoredConfig();
+    setPageStatus('Deleting...');
+    try {
+      const tabs = await sheetsGetTabs(cfg.spreadsheetId, token);
+      const menusSheetId = (tabs.find(t => t.title === 'Menus') || {}).sheetId;
+      const mlSheetId = (tabs.find(t => t.title === 'MenuLines') || {}).sheetId;
+      if (menusSheetId == null || mlSheetId == null) throw new Error('Could not find the Menus or MenuLines tab.');
+
+      const mlRows = await sheetsGet(cfg.spreadsheetId, ML_RANGE, token);
+      const ownLineIndices = [];
+      mlRows.forEach((r, i) => { if (i > 0 && r[1] === menuId) ownLineIndices.push(i); });
+      ownLineIndices.sort((a, b) => b - a);
+      const requests = ownLineIndices.map(idx => ({
+        deleteDimension: { range: { sheetId: mlSheetId, dimension: 'ROWS', startIndex: idx, endIndex: idx + 1 } }
+      }));
+
+      const menuRows = await sheetsGet(cfg.spreadsheetId, MENUS_RANGE, token);
+      const menuIdx = menuRows.findIndex((r, i) => i > 0 && r[0] === menuId);
+      if (menuIdx === -1) throw new Error('Could not find this menu\'s row.');
+      requests.push({ deleteDimension: { range: { sheetId: menusSheetId, dimension: 'ROWS', startIndex: menuIdx, endIndex: menuIdx + 1 } } });
+
+      await sheetsBatchUpdate(cfg.spreadsheetId, requests, token);
+      if (openMenuId === menuId) openMenuId = null;
+      await loadAll();
+      setPageStatus(`Deleted "${menu.name}".`, 'ok');
+    } catch (err) {
+      setPageStatus('Error deleting: ' + err.message, 'error');
+    }
+  }
+
+  document.getElementById('reloadAllBtn').addEventListener('click', async () => {
+    if (!requireAuth()) return;
+    setPageStatus('Reloading...');
+    await loadAll();
+    setPageStatus(`Loaded ${menusAll.length} menu(s).`, 'ok');
+  });
+
+  // ---------- Open menu editor ----------
+  function renderOpenMenu() {
+    const editor = document.getElementById('menuEditor');
+    if (!openMenuId) { editor.style.display = 'none'; return; }
+    editor.style.display = 'block';
+    editingMenuName = false;
+    editingQtyLineId = null;
+    renderMenuName();
+    renderMenuTable();
+    renderShoppingList();
+  }
+
+  document.getElementById('closeMenuBtn').addEventListener('click', () => {
+    openMenuId = null;
+    renderMenusList();
+    renderOpenMenu();
+  });
+
+  function renderMenuName() {
+    const wrap = document.getElementById('me_nameWrap');
+    const menu = menusAll.find(m => m.id === openMenuId);
+    if (!menu) return;
+    if (editingMenuName) {
+      wrap.innerHTML = `
+        <div style="display:flex; align-items:center; gap:6px; margin-bottom:14px;">
+          <input type="text" id="me_nameInput" value="${escapeAttr(menu.name)}" style="font-family:var(--serif); font-size:19px; padding:8px 10px; margin:0; max-width:340px;">
+          <button type="button" id="me_nameSave" title="Save" style="margin:0; padding:8px 14px;">&#10003;</button>
+          <button type="button" class="secondary" id="me_nameCancel" title="Cancel" style="margin:0; padding:8px 14px;">&times;</button>
+        </div>`;
+      const input = document.getElementById('me_nameInput');
+      input.focus();
+      input.select();
+    } else {
+      wrap.innerHTML = `<h2 style="margin-top:0; cursor:pointer;" id="me_nameDisplay" title="Click to rename">${menu.name}</h2>`;
+    }
+  }
+
+  document.getElementById('me_nameWrap').addEventListener('click', (e) => {
+    if (e.target.closest('#me_nameDisplay')) { editingMenuName = true; renderMenuName(); }
+    else if (e.target.closest('#me_nameSave')) { commitMenuRename(); }
+    else if (e.target.closest('#me_nameCancel')) { editingMenuName = false; renderMenuName(); }
+  });
+  document.getElementById('me_nameWrap').addEventListener('keydown', (e) => {
+    if (e.target.id !== 'me_nameInput') return;
+    if (e.key === 'Enter') { e.preventDefault(); commitMenuRename(); }
+    else if (e.key === 'Escape') { editingMenuName = false; renderMenuName(); }
+  });
+
+  async function commitMenuRename() {
+    const input = document.getElementById('me_nameInput');
+    const menu = menusAll.find(m => m.id === openMenuId);
+    if (!input || !menu) return;
+    const newName = input.value.trim();
+    if (!newName) { setMiStatus('Name cannot be empty.', 'error'); return; }
+    if (newName === menu.name) { editingMenuName = false; renderMenuName(); return; }
+    const cfg = getStoredConfig();
+    setMiStatus('Renaming...');
+    try {
+      const rows = await sheetsGet(cfg.spreadsheetId, MENUS_RANGE, token);
+      const rowIndex = rows.findIndex((r, i) => i > 0 && r[0] === menu.id);
+      if (rowIndex === -1) throw new Error('Could not find this menu\'s row.');
+      await sheetsUpdateRange(cfg.spreadsheetId, `Menus!B${rowIndex + 1}:B${rowIndex + 1}`, [[newName]], token, 'USER_ENTERED');
+      editingMenuName = false;
+      await loadAll();
+      setMiStatus('Renamed.', 'ok');
+    } catch (err) {
+      setMiStatus('Error renaming: ' + err.message, 'error');
+    }
   }
 
   function renderRecipeSelect() {
@@ -167,55 +443,114 @@
     document.getElementById('mi_unit').textContent = rec ? portionUnit(rec.yieldMeasureType, rec.yieldUnit) : '—';
   }
 
-  // ---------- Menu ----------
-  document.getElementById('mi_addBtn').addEventListener('click', () => {
+  // ---------- Menu items (persisted MenuLines) ----------
+  document.getElementById('mi_addBtn').addEventListener('click', async () => {
+    if (!openMenuId) return;
     const recipeId = document.getElementById('mi_recipe').value;
     const qty = parseFloat(document.getElementById('mi_qty').value);
     const rec = recipeById(recipeId);
     if (!rec) { setMiStatus('Choose a recipe.', 'error'); return; }
     if (!qty || qty <= 0) { setMiStatus('Enter a quantity greater than 0.', 'error'); return; }
-    const existing = menuItems.find(m => m.recipeId === recipeId);
-    if (existing) existing.qty += qty; else menuItems.push({ recipeId, qty });
-    document.getElementById('mi_qty').value = '';
-    setMiStatus(`Added ${rec.name}.`, 'ok');
-    renderMenu();
+
+    const cfg = getStoredConfig();
+    setMiStatus('Adding...');
+    try {
+      const existing = await sheetsGet(cfg.spreadsheetId, ML_RANGE, token);
+      const rows = existing.length ? existing : [ML_HEADERS];
+      const id = nextId(rows, 'ML');
+      await sheetsAppend(cfg.spreadsheetId, ML_RANGE, [id, openMenuId, recipeId, qty], token);
+      document.getElementById('mi_qty').value = '';
+      await loadAll();
+      setMiStatus(`Added ${rec.name}.`, 'ok');
+    } catch (err) {
+      setMiStatus('Error: ' + err.message, 'error');
+    }
   });
 
-  function renderMenu() {
+  function renderMenuTable() {
     const table = document.getElementById('menuTable');
     const empty = document.getElementById('menuEmpty');
-    const clearBtn = document.getElementById('clearMenuBtn');
-    if (!menuItems.length) {
-      table.style.display = 'none'; empty.style.display = 'block'; clearBtn.style.display = 'none';
-      renderShoppingList();
+    const lines = menuLinesFor(openMenuId);
+    if (!lines.length) {
+      table.style.display = 'none'; empty.style.display = 'block';
+      document.getElementById('menuBody').innerHTML = '';
       return;
     }
-    empty.style.display = 'none'; clearBtn.style.display = 'inline-block';
-    document.getElementById('menuBody').innerHTML = menuItems.map((m, idx) => {
-      const rec = recipeById(m.recipeId);
-      const cost = rec ? rec.costPerBase * toBaseAmount(rec.yieldMeasureType, m.qty, rec.yieldUnit) : 0;
+    empty.style.display = 'none';
+    document.getElementById('menuBody').innerHTML = lines.map((l) => {
+      const rec = recipeById(l.recipeId);
+      const cost = rec ? rec.costPerBase * toBaseAmount(rec.yieldMeasureType, l.qty, rec.yieldUnit) : 0;
+      const qtyCell = editingQtyLineId === l.id
+        ? `<span style="display:flex; align-items:center; gap:4px;">
+            <input type="number" step="0.01" min="0" id="qtyEditInput" data-id="${l.id}" value="${l.qty}" style="width:80px;">
+            <button type="button" data-role="save-qty" data-id="${l.id}" title="Save" style="margin:0; padding:4px 8px;">&#10003;</button>
+            <button type="button" class="secondary" data-role="cancel-qty" data-id="${l.id}" title="Cancel" style="margin:0; padding:4px 8px;">&times;</button>
+          </span>`
+        : `<button type="button" data-role="edit-qty" data-id="${l.id}" title="Click to change quantity" style="background:none; border:none; cursor:pointer; padding:0; font:inherit; text-decoration:underline dotted; color:inherit;">${l.qty} ${rec ? portionUnit(rec.yieldMeasureType, rec.yieldUnit, l.qty) : ''}</button>`;
       return `
         <tr>
-          <td>${rec ? `<a href="#" class="cell-main" data-role="open-recipe" data-id="${rec.id}">${rec.name}</a><span class="cell-sub">${rec.type}</span>` : m.recipeId}</td>
-          <td>${m.qty} ${rec ? portionUnit(rec.yieldMeasureType, rec.yieldUnit, m.qty) : ''}</td>
+          <td>${rec ? `<a href="#" class="cell-main" data-role="open-recipe" data-id="${rec.id}">${rec.name}</a><span class="cell-sub">${rec.type}</span>` : l.recipeId}</td>
+          <td>${qtyCell}</td>
           <td class="num"><span class="cell-main">${fmtMoney2(cost)}</span>${rec ? `<span class="cell-sub">${fmtMoney2(rec.costPerBase)} per ${portionRateUnit(rec.yieldMeasureType)}</span>` : ''}</td>
-          <td><button type="button" class="secondary" data-idx="${idx}" style="margin:0; padding:5px 10px;">Remove</button></td>
+          <td><button type="button" class="secondary danger" data-role="remove-line" data-id="${l.id}" style="margin:0; padding:5px 10px;">Remove</button></td>
         </tr>`;
     }).join('');
     table.style.display = 'table';
-    renderShoppingList();
   }
 
   document.getElementById('menuBody').addEventListener('click', (e) => {
     const recipeLink = e.target.closest('a[data-role="open-recipe"]');
     if (recipeLink) { e.preventDefault(); openRecipeModal(recipeLink.dataset.id, { onChange: loadAll }); return; }
-    const btn = e.target.closest('button[data-idx]');
-    if (!btn) return;
-    menuItems.splice(parseInt(btn.dataset.idx, 10), 1);
-    renderMenu();
+    const editBtn = e.target.closest('button[data-role="edit-qty"]');
+    if (editBtn) { editingQtyLineId = editBtn.dataset.id; renderMenuTable(); return; }
+    const cancelBtn = e.target.closest('button[data-role="cancel-qty"]');
+    if (cancelBtn) { editingQtyLineId = null; renderMenuTable(); return; }
+    const saveBtn = e.target.closest('button[data-role="save-qty"]');
+    if (saveBtn) { saveLineQty(saveBtn.dataset.id); return; }
+    const rmBtn = e.target.closest('button[data-role="remove-line"]');
+    if (rmBtn) { removeMenuLine(rmBtn.dataset.id); }
+  });
+  document.getElementById('menuBody').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && e.target.id === 'qtyEditInput') { e.preventDefault(); saveLineQty(e.target.dataset.id); }
   });
 
-  document.getElementById('clearMenuBtn').addEventListener('click', () => { menuItems = []; renderMenu(); });
+  async function saveLineQty(lineId) {
+    const input = document.querySelector(`#qtyEditInput[data-id="${lineId}"]`);
+    const line = allMenuLines.find(l => l.id === lineId);
+    if (!input || !line) return;
+    const newQty = parseFloat(input.value);
+    if (!newQty || newQty <= 0) { setMiStatus('Enter a quantity greater than 0.', 'error'); return; }
+    const cfg = getStoredConfig();
+    setMiStatus('Saving...');
+    try {
+      await sheetsUpdateRange(cfg.spreadsheetId, `MenuLines!D${line.rowIndex + 1}:D${line.rowIndex + 1}`, [[newQty]], token, 'USER_ENTERED');
+      editingQtyLineId = null;
+      await loadAll();
+      setMiStatus('Quantity updated.', 'ok');
+    } catch (err) {
+      setMiStatus('Error updating quantity: ' + err.message, 'error');
+    }
+  }
+
+  async function removeMenuLine(lineId) {
+    const line = allMenuLines.find(l => l.id === lineId);
+    if (!line) return;
+    if (!confirm('Remove this item from the menu?')) return;
+    const cfg = getStoredConfig();
+    setMiStatus('Removing...');
+    try {
+      const tabs = await sheetsGetTabs(cfg.spreadsheetId, token);
+      const sheetId = (tabs.find(t => t.title === 'MenuLines') || {}).sheetId;
+      if (sheetId == null) throw new Error('Could not find the MenuLines tab.');
+      await sheetsBatchUpdate(cfg.spreadsheetId, [{
+        deleteDimension: { range: { sheetId, dimension: 'ROWS', startIndex: line.rowIndex, endIndex: line.rowIndex + 1 } }
+      }], token);
+      await loadAll();
+      setMiStatus('Removed.', 'ok');
+    } catch (err) {
+      setMiStatus('Error removing: ' + err.message, 'error');
+    }
+  }
 
   // ---------- Recursive expansion: menu -> raw ingredient totals (in each ingredient's base unit) ----------
   function expand(recipeId, neededBaseAmount, visited, totals, warnings) {
@@ -250,7 +585,7 @@
   function buildShoppingTotals() {
     const totals = {}; // ingredientId -> base amount
     const warnings = new Set();
-    for (const m of menuItems) {
+    for (const m of menuLinesFor(openMenuId)) {
       const rec = recipeById(m.recipeId);
       if (!rec) continue;
       const yieldBase = toBaseAmount(rec.yieldMeasureType, rec.yieldAmount, rec.yieldUnit);
@@ -268,7 +603,7 @@
     const copyBtn = document.getElementById('copyListBtn');
     setCopyStatus('');
 
-    if (!menuItems.length) {
+    if (!openMenuId || !menuLinesFor(openMenuId).length) {
       listBox.innerHTML = ''; warnBox.innerHTML = ''; totalsBox.style.display = 'none'; copyBtn.style.display = 'none';
       return;
     }
@@ -280,7 +615,7 @@
       ? `<p class="status-line error">${[...warnings].join('<br>')}</p>` : '';
 
     if (!ids.length) {
-      listBox.innerHTML = '<p class="sub">Nothing to show yet — the recipes on your menu have no ingredient lines.</p>';
+      listBox.innerHTML = '<p class="sub">Nothing to show yet — the recipes on this menu have no ingredient lines.</p>';
       totalsBox.style.display = 'none'; copyBtn.style.display = 'none';
       return;
     }
@@ -330,12 +665,13 @@
   }
 
   document.getElementById('copyListBtn').addEventListener('click', async () => {
+    const menu = menusAll.find(m => m.id === openMenuId);
     const { totals } = buildShoppingTotals();
     const ids = Object.keys(totals).filter(id => totals[id] > 0.0005);
     const byCategory = {};
     ids.forEach(id => { const ing = ingredientById(id); const cat = ing ? ing.category : 'Unknown'; (byCategory[cat] = byCategory[cat] || []).push(id); });
     const categories = Object.keys(byCategory).sort((a, b) => a.localeCompare(b));
-    let text = 'Shopping list\n';
+    let text = `Shopping list — ${menu ? menu.name : ''}\n`;
     categories.forEach(cat => {
       text += `\n${cat}\n`;
       byCategory[cat].sort((a, b) => (ingredientById(a) || {}).name.localeCompare((ingredientById(b) || {}).name)).forEach(id => {
@@ -361,9 +697,16 @@
 
   window.addEventListener('load', async () => {
     if (requireAuth()) {
-      setMiStatus('Loading...');
-      try { await loadAll(); setMiStatus('', ''); }
-      catch (err) { setMiStatus('Error loading data: ' + err.message, 'error'); }
+      setPageStatus('Loading...');
+      try {
+        await loadAll();
+        setPageStatus(`Loaded ${menusAll.length} menu(s).`, 'ok');
+        // Support "menu.html?open=MENU007" so other pages can link straight into a menu.
+        const openId = new URLSearchParams(location.search).get('open');
+        if (openId && menusAll.find(m => m.id === openId)) { openMenuId = openId; renderMenusList(); renderOpenMenu(); }
+      } catch (err) {
+        setPageStatus('Error loading data: ' + err.message, 'error');
+      }
     }
   });
 </script>
