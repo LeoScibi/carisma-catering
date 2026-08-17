@@ -28,7 +28,7 @@
 
 <main>
   <h1>Menu Builder</h1>
-  <p class="sub">A menu is a set of dishes (recipes) and how much of each you need. Sub-recipes are expanded down to raw ingredients for a consolidated, category-grouped shopping list. Menus are saved to your spreadsheet, so they're here next time you open this page.</p>
+  <p class="sub">Add recipes and how much of each you need, and get a consolidated shopping list — sub-recipes are expanded down to raw ingredients and quantities are combined across the whole menu. This page only reads your data; nothing is saved to the sheet, so it resets if you leave.</p>
 
   <div id="signedOutNotice" class="card" style="display:none;">
     <span class="badge off">Not signed in</span>
@@ -37,52 +37,43 @@
 
   <div id="appBody" style="display:none;">
 
-    <div class="toolbar" id="menuToolbar">
-      <button type="button" id="openNewMenuBtn" class="add-btn"><span class="plus">+</span> New menu</button>
-      <button type="button" id="reloadAllBtn" class="secondary">Reload</button>
+    <div class="card">
+      <h2 style="margin-top:0;">Add a recipe</h2>
+      <div class="field-row">
+        <div>
+          <label style="margin-top:0;">Recipe *</label>
+          <select id="mi_recipe"><option value="">Loading recipes...</option></select>
+        </div>
+        <div>
+          <label style="margin-top:0;">Quantity needed *</label>
+          <div style="display:flex; gap:8px; align-items:center;">
+            <input id="mi_qty" type="number" step="0.01" min="0" style="flex:1;">
+            <span id="mi_unit" style="color:var(--muted); font-size:13px; white-space:nowrap;">—</span>
+          </div>
+        </div>
+      </div>
+      <p class="hint">E.g. if the recipe yields 12 portions and you're serving 60 people, enter 60. If it yields 2 kg and you need 5 kg, enter 5.</p>
+      <button type="button" id="mi_addBtn">Add to menu</button>
+      <div id="mi_status" class="status-line"></div>
     </div>
 
-    <h2>Saved menus</h2>
-    <div id="pageStatus" class="status-line"></div>
-    <p class="sub" id="menuListHint" style="display:none;">Click a menu to rename it or edit its dishes and quantities.</p>
-    <table id="menuListTable" class="clickable" style="display:none;">
-      <thead><tr><th>Menu</th><th>Items</th><th class="num">Total cost</th><th></th></tr></thead>
-      <tbody id="menuListBody"></tbody>
+    <h2>Menu</h2>
+    <table id="menuTable" style="display:none;">
+      <thead><tr><th>Recipe</th><th>Quantity needed</th><th class="num">Est. cost</th><th></th></tr></thead>
+      <tbody id="menuBody"></tbody>
     </table>
-    <p class="sub" id="menuListEmpty" style="display:none;">No menus yet — create one above.</p>
+    <p class="sub" id="menuEmpty">No recipes on the menu yet — add one above.</p>
+    <button type="button" id="clearMenuBtn" class="secondary" style="display:none;">Clear menu</button>
 
-    <div id="shoppingSection" style="display:none;">
-      <div style="display:flex; align-items:baseline; justify-content:space-between; gap:12px; flex-wrap:wrap;">
-        <h2 id="shoppingTitle" style="margin-bottom:0;">Shopping list</h2>
-        <button type="button" id="hideShoppingBtn" class="secondary" style="margin:0;">Hide</button>
-      </div>
-      <div id="shoppingWarnings"></div>
-      <div id="shoppingList"></div>
-      <div class="totals" id="shoppingTotals" style="display:none;">
-        <div class="line grand"><span>Estimated total cost</span><span id="sl_totalcost">£0.00</span></div>
-      </div>
-      <button type="button" id="copyListBtn" class="secondary" style="display:none;">Copy list as text</button>
-      <div id="copyStatus" class="status-line"></div>
+    <h2>Shopping list</h2>
+    <div id="shoppingWarnings"></div>
+    <div id="shoppingList"></div>
+    <div class="totals" id="shoppingTotals" style="display:none;">
+      <div class="line grand"><span>Estimated total cost</span><span id="sl_totalcost">£0.00</span></div>
     </div>
+    <button type="button" id="copyListBtn" class="secondary" style="display:none;">Copy list as text</button>
+    <div id="copyStatus" class="status-line"></div>
   </div>
-
-  <!-- New menu dialog -->
-  <dialog id="newMenuDialog">
-    <div class="dialog-head">
-      <h2>New menu</h2>
-      <button type="button" class="dialog-close" id="closeNewMenuBtn" aria-label="Close">&times;</button>
-    </div>
-    <div class="dialog-body">
-      <form id="newMenuForm">
-        <label style="margin-top:0;">Name *</label>
-        <input id="nm_name" required placeholder="e.g. Smith Wedding — 60 guests">
-        <p class="hint">Add dishes and their quantities on the next screen.</p>
-        <button type="submit" id="nm_addBtn">Create menu</button>
-        <button type="button" id="nm_cancelBtn" class="secondary">Cancel</button>
-      </form>
-      <div id="nm_status" class="status-line"></div>
-    </div>
-  </dialog>
 </main>
 
 <script src="js/config.js?v=2"></script>
@@ -97,23 +88,19 @@
   const SUP_RANGE = 'Suppliers!A:D';
   const SI_RANGE = 'SupplierIngredients!A:G';
   const REC_RANGE = 'Recipes!A:H';
-  const REC_HEADERS = ['ID','NAME','TYPE','YIELD MEASURE TYPE','YIELD AMOUNT','YIELD UNIT','TOTAL COST','COST PER BASE UNIT'];
-  const RL_RANGE = 'RecipeLines!A:I';
-  const RL_HEADERS = ['ID','RECIPE ID','COMPONENT TYPE','COMPONENT ID','QUANTITY','UNIT','SELECTED SUPPLIER ID','LINE COST','SORT ORDER'];
+  const RL_RANGE = 'RecipeLines!A:H';
 
   let token = null;
   let ingredients = [];         // {id, name, category, measureType, baseUnit}
   let suppliers = [];           // {id, name}
   let supplierIngredients = []; // {id, ingredientId, supplierId, costPerBase}
-  let recipesAll = [];          // {id, name, type, yieldMeasureType, yieldAmount, yieldUnit, totalCost, costPerBase} — includes Menus
+  let recipesAll = [];          // {id, name, type, yieldMeasureType, yieldAmount, yieldUnit, costPerBase}
   let allLines = [];            // every RecipeLines row: {recipeId, componentType, componentId, quantity, unit}
-  let shoppingMenuId = null;    // which saved menu the shopping list section is currently showing
+  let menuItems = [];           // [{recipeId, qty}] — session-only
 
-  const nmStatus = document.getElementById('nm_status');
-  const pageStatus = document.getElementById('pageStatus');
+  const miStatus = document.getElementById('mi_status');
   const copyStatus = document.getElementById('copyStatus');
-  function setNmStatus(m, k) { nmStatus.textContent = m; nmStatus.className = 'status-line' + (k ? ' ' + k : ''); }
-  function setPageStatus(m, k) { pageStatus.textContent = m; pageStatus.className = 'status-line' + (k ? ' ' + k : ''); }
+  function setMiStatus(m, k) { miStatus.textContent = m; miStatus.className = 'status-line' + (k ? ' ' + k : ''); }
   function setCopyStatus(m, k) { copyStatus.textContent = m; copyStatus.className = 'status-line' + (k ? ' ' + k : ''); }
 
   function requireAuth() {
@@ -154,144 +141,83 @@
     supplierIngredients = (siRows.slice(1) || []).map(r => ({ id: r[0], ingredientId: r[1], supplierId: r[2], costPerBase: parseFloat(r[6]) || 0 })).filter(s => s.id);
     recipesAll = (recRows.slice(1) || []).map(r => ({
       id: r[0], name: r[1], type: r[2], yieldMeasureType: r[3],
-      yieldAmount: parseFloat(r[4]) || 0, yieldUnit: r[5],
-      totalCost: parseFloat(r[6]) || 0, costPerBase: parseFloat(r[7]) || 0
+      yieldAmount: parseFloat(r[4]) || 0, yieldUnit: r[5], costPerBase: parseFloat(r[7]) || 0
     })).filter(r => r.id);
     allLines = (rlRows.slice(1) || []).map(r => ({
       recipeId: r[1], componentType: r[2], componentId: r[3], quantity: parseFloat(r[4]) || 0, unit: r[5]
     })).filter(l => l.recipeId);
 
-    renderMenuList();
-    if (shoppingMenuId && !recipeById(shoppingMenuId)) shoppingMenuId = null;
-    renderShoppingSection();
+    renderRecipeSelect();
+    // Drop any menu items whose recipe no longer exists, keep the rest.
+    menuItems = menuItems.filter(m => recipeById(m.recipeId));
+    renderMenu();
   }
 
-  // ---------- Saved menus list ----------
-  function renderMenuList() {
-    const table = document.getElementById('menuListTable');
-    const hint = document.getElementById('menuListHint');
-    const empty = document.getElementById('menuListEmpty');
-    const menus = recipesAll.filter(r => r.type === 'Menu');
-    if (!menus.length) {
-      table.style.display = 'none'; hint.style.display = 'none'; empty.style.display = 'block';
-      document.getElementById('menuListBody').innerHTML = '';
+  function renderRecipeSelect() {
+    const sel = document.getElementById('mi_recipe');
+    sel.innerHTML = recipesAll.length
+      ? '<option value="">Choose a recipe...</option>' + recipesAll.map(r => `<option value="${r.id}">${r.name} — ${r.type} (yields ${r.yieldAmount} ${portionUnit(r.yieldMeasureType, r.yieldUnit, r.yieldAmount)})</option>`).join('')
+      : '<option value="">No recipes yet — create one on the Recipes page</option>';
+    updateUnitHint();
+  }
+
+  document.getElementById('mi_recipe').addEventListener('change', updateUnitHint);
+  function updateUnitHint() {
+    const rec = recipeById(document.getElementById('mi_recipe').value);
+    document.getElementById('mi_unit').textContent = rec ? portionUnit(rec.yieldMeasureType, rec.yieldUnit) : '—';
+  }
+
+  // ---------- Menu ----------
+  document.getElementById('mi_addBtn').addEventListener('click', () => {
+    const recipeId = document.getElementById('mi_recipe').value;
+    const qty = parseFloat(document.getElementById('mi_qty').value);
+    const rec = recipeById(recipeId);
+    if (!rec) { setMiStatus('Choose a recipe.', 'error'); return; }
+    if (!qty || qty <= 0) { setMiStatus('Enter a quantity greater than 0.', 'error'); return; }
+    const existing = menuItems.find(m => m.recipeId === recipeId);
+    if (existing) existing.qty += qty; else menuItems.push({ recipeId, qty });
+    document.getElementById('mi_qty').value = '';
+    setMiStatus(`Added ${rec.name}.`, 'ok');
+    renderMenu();
+  });
+
+  function renderMenu() {
+    const table = document.getElementById('menuTable');
+    const empty = document.getElementById('menuEmpty');
+    const clearBtn = document.getElementById('clearMenuBtn');
+    if (!menuItems.length) {
+      table.style.display = 'none'; empty.style.display = 'block'; clearBtn.style.display = 'none';
+      renderShoppingList();
       return;
     }
-    empty.style.display = 'none'; hint.style.display = 'block';
-    document.getElementById('menuListBody').innerHTML = menus.map(m => {
-      const count = linesFor(m.id).length;
+    empty.style.display = 'none'; clearBtn.style.display = 'inline-block';
+    document.getElementById('menuBody').innerHTML = menuItems.map((m, idx) => {
+      const rec = recipeById(m.recipeId);
+      const cost = rec ? rec.costPerBase * toBaseAmount(rec.yieldMeasureType, m.qty, rec.yieldUnit) : 0;
       return `
-        <tr data-id="${m.id}">
-          <td><span class="cell-main">${m.name}</span></td>
-          <td>${count} item${count === 1 ? '' : 's'}</td>
-          <td class="num"><span class="cell-main">${fmtMoney2(m.totalCost)}</span></td>
-          <td style="white-space:nowrap;">
-            <button type="button" class="secondary" data-role="view-list" data-id="${m.id}" style="margin:0; padding:5px 10px;">Shopping list</button>
-            <button type="button" class="secondary" data-role="duplicate" data-id="${m.id}" style="margin:0; padding:5px 10px;">Duplicate</button>
-          </td>
+        <tr>
+          <td>${rec ? `<a href="#" class="cell-main" data-role="open-recipe" data-id="${rec.id}">${rec.name}</a><span class="cell-sub">${rec.type}</span>` : m.recipeId}</td>
+          <td>${m.qty} ${rec ? portionUnit(rec.yieldMeasureType, rec.yieldUnit, m.qty) : ''}</td>
+          <td class="num"><span class="cell-main">${fmtMoney2(cost)}</span>${rec ? `<span class="cell-sub">${fmtMoney2(rec.costPerBase)} per ${portionRateUnit(rec.yieldMeasureType)}</span>` : ''}</td>
+          <td><button type="button" class="secondary" data-idx="${idx}" style="margin:0; padding:5px 10px;">Remove</button></td>
         </tr>`;
     }).join('');
     table.style.display = 'table';
+    renderShoppingList();
   }
 
-  document.getElementById('menuListBody').addEventListener('click', (e) => {
-    const viewBtn = e.target.closest('button[data-role="view-list"]');
-    if (viewBtn) { shoppingMenuId = viewBtn.dataset.id; renderShoppingSection(); return; }
-    const dupBtn = e.target.closest('button[data-role="duplicate"]');
-    if (dupBtn) { duplicateMenu(dupBtn.dataset.id); return; }
-    const tr = e.target.closest('tr[data-id]');
-    if (tr) openRecipeModal(tr.dataset.id, { onChange: loadAll });
+  document.getElementById('menuBody').addEventListener('click', (e) => {
+    const recipeLink = e.target.closest('a[data-role="open-recipe"]');
+    if (recipeLink) { e.preventDefault(); openRecipeModal(recipeLink.dataset.id, { onChange: loadAll }); return; }
+    const btn = e.target.closest('button[data-idx]');
+    if (!btn) return;
+    menuItems.splice(parseInt(btn.dataset.idx, 10), 1);
+    renderMenu();
   });
 
-  // ---------- New menu ----------
-  const newMenuDialog = document.getElementById('newMenuDialog');
-  const newMenuDialogGuard = attachDiscardGuard(newMenuDialog);
-  document.getElementById('openNewMenuBtn').addEventListener('click', () => {
-    if (!requireAuth()) return;
-    setNmStatus('');
-    document.getElementById('newMenuForm').reset();
-    newMenuDialog.showModal();
-    newMenuDialogGuard.arm();
-    document.getElementById('nm_name').focus();
-  });
-  document.getElementById('closeNewMenuBtn').addEventListener('click', () => newMenuDialogGuard.guardedClose());
-  document.getElementById('nm_cancelBtn').addEventListener('click', () => newMenuDialogGuard.guardedClose());
+  document.getElementById('clearMenuBtn').addEventListener('click', () => { menuItems = []; renderMenu(); });
 
-  document.getElementById('newMenuForm').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    if (!requireAuth()) return;
-    const name = document.getElementById('nm_name').value.trim();
-    if (!name) { setNmStatus('Name is required.', 'error'); return; }
-
-    const cfg = getStoredConfig();
-    setNmStatus('Creating menu...');
-    try {
-      const existing = await sheetsGet(cfg.spreadsheetId, REC_RANGE, token);
-      const rows = existing.length ? existing : [REC_HEADERS];
-      const id = nextId(rows, 'REC');
-      // A menu's yield is a fixed 1pc placeholder — it's a container of dishes,
-      // not something with a real portion size of its own.
-      const row = [id, name, 'Menu', 'Unit', 1, 'pc', '0.00', '0.0000'];
-      await sheetsAppend(cfg.spreadsheetId, REC_RANGE, row, token);
-      await loadAll();
-      newMenuDialog.close();
-      setPageStatus(`Menu "${name}" created.`, 'ok');
-      openRecipeModal(id, { onChange: loadAll });
-    } catch (err) {
-      setNmStatus('Error: ' + err.message, 'error');
-    }
-  });
-
-  // ---------- Duplicate menu ----------
-  async function duplicateMenu(menuId) {
-    const menu = recipeById(menuId);
-    if (!menu) return;
-    if (!confirm(`Duplicate "${menu.name}"? This copies its name and all dish lines into a new menu.`)) return;
-    const cfg = getStoredConfig();
-    setPageStatus('Duplicating...');
-    try {
-      const [recRows, rlRows] = await Promise.all([
-        sheetsGet(cfg.spreadsheetId, REC_RANGE, token),
-        sheetsGet(cfg.spreadsheetId, RL_RANGE, token)
-      ]);
-      const recRowsList = recRows.length ? recRows : [REC_HEADERS];
-      const newId = nextId(recRowsList, 'REC');
-      const newName = `${menu.name} (copy)`;
-      const newRow = [newId, newName, 'Menu', menu.yieldMeasureType, menu.yieldAmount, menu.yieldUnit, menu.totalCost.toFixed(2), menu.costPerBase.toFixed(4)];
-      await sheetsAppend(cfg.spreadsheetId, REC_RANGE, newRow, token);
-
-      const sourceLines = rlRows.slice(1).filter(r => r[1] === menuId);
-      if (sourceLines.length) {
-        const rlRowsList = rlRows.length ? rlRows : [RL_HEADERS];
-        const newLines = [];
-        let n = 0;
-        for (let i = 1; i < rlRowsList.length; i++) {
-          const c = (rlRowsList[i][0] || '').toString();
-          if (c.startsWith('RL')) { const v = parseInt(c.slice(2), 10); if (!isNaN(v) && v > n) n = v; }
-        }
-        sourceLines.forEach(r => {
-          n += 1;
-          newLines.push(['RL' + String(n).padStart(3, '0'), newId, r[2], r[3], r[4], r[5], r[6] || '', r[7], r[8]]);
-        });
-        await sheetsAppendRows(cfg.spreadsheetId, RL_RANGE, newLines, token);
-      }
-
-      await loadAll();
-      setPageStatus(`Duplicated as "${newName}".`, 'ok');
-      openRecipeModal(newId, { onChange: loadAll });
-    } catch (err) {
-      setPageStatus('Error duplicating: ' + err.message, 'error');
-    }
-  }
-
-  document.getElementById('reloadAllBtn').addEventListener('click', async () => {
-    if (!requireAuth()) return;
-    setPageStatus('Reloading...');
-    await loadAll();
-    setPageStatus(`Loaded ${recipesAll.filter(r => r.type === 'Menu').length} menu(s).`, 'ok');
-  });
-
-  // ---------- Recursive expansion: a recipe's lines -> raw ingredient totals (in each ingredient's base unit) ----------
+  // ---------- Recursive expansion: menu -> raw ingredient totals (in each ingredient's base unit) ----------
   function expand(recipeId, neededBaseAmount, visited, totals, warnings) {
     if (visited.has(recipeId)) {
       const rec = recipeById(recipeId);
@@ -321,32 +247,19 @@
     }
   }
 
-  // A menu is itself a recipe whose lines are its dishes — so the shopping list
-  // for it is just expand() anchored at the menu's own id and yield (1pc).
   function buildShoppingTotals() {
-    const totals = {};
+    const totals = {}; // ingredientId -> base amount
     const warnings = new Set();
-    const menu = shoppingMenuId ? recipeById(shoppingMenuId) : null;
-    if (!menu) return { totals, warnings };
-    const neededBase = toBaseAmount(menu.yieldMeasureType, menu.yieldAmount, menu.yieldUnit);
-    if (!neededBase) { warnings.add(`"${menu.name}" has no yield set, so it can't be scaled — skipped.`); return { totals, warnings }; }
-    expand(menu.id, neededBase, new Set(), totals, warnings);
+    for (const m of menuItems) {
+      const rec = recipeById(m.recipeId);
+      if (!rec) continue;
+      const yieldBase = toBaseAmount(rec.yieldMeasureType, rec.yieldAmount, rec.yieldUnit);
+      if (!yieldBase) { warnings.add(`"${rec.name}" has no yield set, so it can't be scaled — skipped.`); continue; }
+      const neededBase = toBaseAmount(rec.yieldMeasureType, m.qty, rec.yieldUnit);
+      expand(m.recipeId, neededBase, new Set(), totals, warnings);
+    }
     return { totals, warnings };
   }
-
-  function renderShoppingSection() {
-    const section = document.getElementById('shoppingSection');
-    const menu = shoppingMenuId ? recipeById(shoppingMenuId) : null;
-    if (!menu) { section.style.display = 'none'; return; }
-    document.getElementById('shoppingTitle').textContent = `Shopping list — ${menu.name}`;
-    section.style.display = 'block';
-    renderShoppingList();
-  }
-
-  document.getElementById('hideShoppingBtn').addEventListener('click', () => {
-    shoppingMenuId = null;
-    renderShoppingSection();
-  });
 
   function renderShoppingList() {
     const listBox = document.getElementById('shoppingList');
@@ -355,6 +268,11 @@
     const copyBtn = document.getElementById('copyListBtn');
     setCopyStatus('');
 
+    if (!menuItems.length) {
+      listBox.innerHTML = ''; warnBox.innerHTML = ''; totalsBox.style.display = 'none'; copyBtn.style.display = 'none';
+      return;
+    }
+
     const { totals, warnings } = buildShoppingTotals();
     const ids = Object.keys(totals).filter(id => totals[id] > 0.0005);
 
@@ -362,7 +280,7 @@
       ? `<p class="status-line error">${[...warnings].join('<br>')}</p>` : '';
 
     if (!ids.length) {
-      listBox.innerHTML = '<p class="sub">Nothing to show yet — add dishes with ingredient lines to this menu.</p>';
+      listBox.innerHTML = '<p class="sub">Nothing to show yet — the recipes on your menu have no ingredient lines.</p>';
       totalsBox.style.display = 'none'; copyBtn.style.display = 'none';
       return;
     }
@@ -412,13 +330,12 @@
   }
 
   document.getElementById('copyListBtn').addEventListener('click', async () => {
-    const menu = shoppingMenuId ? recipeById(shoppingMenuId) : null;
     const { totals } = buildShoppingTotals();
     const ids = Object.keys(totals).filter(id => totals[id] > 0.0005);
     const byCategory = {};
     ids.forEach(id => { const ing = ingredientById(id); const cat = ing ? ing.category : 'Unknown'; (byCategory[cat] = byCategory[cat] || []).push(id); });
     const categories = Object.keys(byCategory).sort((a, b) => a.localeCompare(b));
-    let text = `Shopping list — ${menu ? menu.name : ''}\n`;
+    let text = 'Shopping list\n';
     categories.forEach(cat => {
       text += `\n${cat}\n`;
       byCategory[cat].sort((a, b) => (ingredientById(a) || {}).name.localeCompare((ingredientById(b) || {}).name)).forEach(id => {
@@ -444,16 +361,9 @@
 
   window.addEventListener('load', async () => {
     if (requireAuth()) {
-      setPageStatus('Loading...');
-      try {
-        await loadAll();
-        setPageStatus(`Loaded ${recipesAll.filter(r => r.type === 'Menu').length} menu(s).`, 'ok');
-        // Support "menu.html?open=REC007" so other pages can link straight into a menu.
-        const openId = new URLSearchParams(location.search).get('open');
-        if (openId) openRecipeModal(openId, { onChange: loadAll });
-      } catch (err) {
-        setPageStatus('Error loading data: ' + err.message, 'error');
-      }
+      setMiStatus('Loading...');
+      try { await loadAll(); setMiStatus('', ''); }
+      catch (err) { setMiStatus('Error loading data: ' + err.message, 'error'); }
     }
   });
 </script>

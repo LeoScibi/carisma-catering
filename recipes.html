@@ -28,7 +28,7 @@
 
 <main>
   <h1>Recipes</h1>
-  <p class="sub">Build a recipe from ingredients or other recipes (sub-recipes). Each line costs to the cheapest supplier by default — switch it per line if you want a different one. Building a menu for an event? Head to <a href="menu.html">Menu Builder</a>.</p>
+  <p class="sub">Build a recipe from ingredients or other recipes (sub-recipes). Each line costs to the cheapest supplier by default — switch it per line if you want a different one.</p>
 
   <div id="signedOutNotice" class="card" style="display:none;">
     <span class="badge off">Not signed in</span>
@@ -132,13 +132,11 @@
   async function loadRecipesOnly() {
     const cfg = getStoredConfig();
     const rows = await sheetsGet(cfg.spreadsheetId, REC_RANGE, token);
-    // Menus live in the same Recipes tab (TYPE="Menu") but are managed on the
-    // Menu Builder page — excluded here so this list stays dishes/sub-recipes only.
     recipesAll = (rows.slice(1) || []).map(r => ({
       id: r[0], name: r[1], type: r[2], yieldMeasureType: r[3],
       yieldAmount: parseFloat(r[4]) || 0, yieldUnit: r[5],
       totalCost: parseFloat(r[6]) || 0, costPerBase: parseFloat(r[7]) || 0
-    })).filter(r => r.id && r.type !== 'Menu');
+    })).filter(r => r.id);
     renderRecipeList();
   }
 
