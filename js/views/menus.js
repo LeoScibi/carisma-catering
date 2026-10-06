@@ -212,6 +212,9 @@ function ensureDialog() {
     </div>`;
   document.body.append(dlg);
   dlg.addEventListener('close', () => {
+    // A close event can arrive after the sheet has already been reopened for another record;
+    // acting on it then would shut the new one.
+    if (dlg.open) return;
     parkToasts();
     ds.id = null;
     if (/^#\/menus\/./.test(location.hash)) location.hash = '#/menus';
@@ -415,6 +418,7 @@ function onClick(e) {
     run(async () => {
       await store.remove({ MENU_LINES: lineIds, MENUS: [ds.id] });
       closeDetail();
+      location.hash = '#/menus';
     }, `Deleted ${name}`);
   }
 }
