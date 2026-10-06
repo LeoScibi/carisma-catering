@@ -3,8 +3,8 @@
 export const CONFIG = {
   // Fill these in so everyone just presses "Sign in". While either is blank the app asks for
   // it on first run and remembers the answer in that browser only.
-  CLIENT_ID: '',
-  SPREADSHEET_ID: '',
+  CLIENT_ID: '543475163442-f9drpo6tef7ui50916ucf7k43gedncc5.apps.googleusercontent.com',
+  SPREADSHEET_ID: '1K3ALJ1mqi_xPo9mNkcVHK3WQWMpvrF48c4iyhKLyPnU',
   // Sheets access, plus openid/email to show who is signed in. Anyone the spreadsheet is
   // shared with can use the app; sharing is the access control.
   SHEETS_SCOPE: 'https://www.googleapis.com/auth/spreadsheets',
