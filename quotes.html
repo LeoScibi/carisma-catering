@@ -2,24 +2,68 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1c1c1c">
+<link rel="icon" href="assets/logo-badge.png" type="image/png">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
 <title>Carisma Ops — Quotes</title>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
-<link rel="stylesheet" href="css/style.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Aboreto&family=Montserrat:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="css/style.css?v=13">
 </head>
 <body>
 
-<header class="app-header">
-  <div class="brand">Carisma <span>Ops</span></div>
-  <nav class="app-nav">
-    <a href="index.html">Dashboard</a>
-    <a href="ingredients.html">Ingredients</a>
-    <a href="quotes.html" class="active">Quotes</a>
+<header class="topbar">
+  <a class="brand" href="index.html" aria-label="Carisma Ops home">
+    <img src="assets/logo-badge.png" alt="" width="38" height="38">
+    <span class="brand-name">Carisma</span>
+    <span class="brand-sub">Ops</span>
+  </a>
+  <nav class="nav" aria-label="Main">
+    <a href="ingredients.html">
+      <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 19c0-8 6-14 14-14 0 8-6 14-14 14zM5 19l7-7"/></svg>
+      <span>Ingredients</span>
+    </a>
+    <a href="suppliers.html">
+      <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h11v10H3zM14 10h4l3 3v3h-7"/><circle cx="7" cy="18" r="2"/><circle cx="17" cy="18" r="2"/></svg>
+      <span>Suppliers</span>
+    </a>
+    <a href="supplier-ingredients.html">
+      <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12.5 3H5a2 2 0 0 0-2 2v7.5a2 2 0 0 0 .59 1.41l8.5 8.5a2 2 0 0 0 2.82 0l6.5-6.5a2 2 0 0 0 0-2.82l-8.5-8.5A2 2 0 0 0 12.5 3z"/><circle cx="8" cy="8" r="1.3"/></svg>
+      <span>Prices</span>
+    </a>
+    <a href="recipes.html">
+      <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4h11a2 2 0 0 1 2 2v14H7a2 2 0 0 1-2-2zM5 18a2 2 0 0 1 2-2h11M9 8h5"/></svg>
+      <span>Recipes</span>
+    </a>
+    <a href="menu.html">
+      <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M8.5 9h7M8.5 12.5h7M8.5 16h4"/></svg>
+      <span>Menus</span>
+    </a>
   </nav>
+  <div class="top-actions">
+    <details class="account">
+      <summary class="avatar" aria-label="More pages" title="More">
+        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+      </summary>
+      <div class="menu">
+        <a class="menu-item" href="index.html">Dashboard &amp; sign-in</a>
+        <a class="menu-item" href="import.html">Import products</a>
+        <a class="menu-item" href="setup.html">Sheet setup</a>
+      </div>
+    </details>
+  </div>
 </header>
 
 <main>
-  <h1>Quote Builder</h1>
+  <div class="page-head">
+    <div>
+      <p class="overline">Carisma Ops</p>
+      <h1>Quote Builder</h1>
+    </div>
+  </div>
   <p class="sub">Pulls menu/tier pricing from the <strong>MenuItems</strong> tab and saves finished quotes to <strong>Quotes</strong>.</p>
 
   <div id="signedOutNotice" class="card" style="display:none;">
