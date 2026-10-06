@@ -21,14 +21,19 @@ On sign-in the app creates any missing tabs (SUPPLIERS, INGREDIENTS, SUPPLIER_PR
 RECIPES, RECIPE_LINES, MENUS, MENU_LINES) with headers. If a tab exists but is missing a column, the
 column is appended at the end. Nothing is ever removed or reordered.
 
-### Importing from the old Carisma Ops sheet
+### Converting the old Carisma Ops layout
 
 The earlier multi-page app used a different layout (tabs Ingredients, Suppliers, SupplierIngredients,
-Recipes, RecipeLines, Menus, MenuLines). *Account menu → Import from the old sheet* copies that data
-into the new spreadsheet with new IDs. It is offered automatically the first time, in a browser that
-used the old app. The old sheet is only read. The import runs only into an empty spreadsheet, so it
-can't duplicate anything. Not carried over: saved costs (they are recalculated), and per-line supplier
-choices (recipes use the ingredient's preferred supplier, or the cheapest).
+Recipes, RecipeLines, Menus, MenuLines). Sheets treats `Ingredients` and `INGREDIENTS` as the same tab
+name, so the two layouts can't sit side by side under their own names. When the app finds the old tabs
+in its spreadsheet it asks to convert: the old tabs are renamed to `OLD_…` and kept as a backup, the new
+tabs are created, and the data is copied across with new IDs. If the copy is interrupted, the next load
+resumes it as long as the new tabs are still empty.
+
+Old data in a *different* spreadsheet can be copied with *Account menu → Import from the old sheet*;
+that spreadsheet is only read. Either way the copy runs only into empty tabs, so it can't duplicate
+anything. Not carried over: saved costs (they are recalculated), and per-line supplier choices
+(recipes use the ingredient's preferred supplier, or the cheapest).
 
 ## Local development
 

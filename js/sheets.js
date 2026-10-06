@@ -16,6 +16,8 @@ export class SheetsError extends Error {
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
+let sheetIds = null; // tab title → sheetId, filled on first use
+
 // `sheet` defaults to the app's own spreadsheet; '' addresses the collection (to create one).
 async function request(path, { method = 'GET', query, body, sheet = spreadsheetId() } = {}) {
   const url = new URL(API + (sheet ? `/${sheet}` : '') + path);
@@ -146,6 +148,16 @@ export async function tabTitles(sheet = spreadsheetId()) {
   return meta.sheets.map(s => s.properties.title);
 }
 
+/** Rename tabs: `names` is { 'Old title': 'New title' }. Titles that don't exist are ignored. */
+export async function renameTabs(names) {
+  const meta = await request('', { query: { fields: 'sheets.properties(sheetId,title)' } });
+  const requests = meta.sheets.filter(s => s.properties.title in names).map(s => ({
+    updateSheetProperties: { properties: { sheetId: s.properties.sheetId, title: names[s.properties.title] }, fields: 'title' },
+  }));
+  if (requests.length) await request(':batchUpdate', { method: 'POST', body: { requests } });
+  sheetIds = null;
+}
+
 /** Read whichever of `tabs` exist in another spreadsheet (read-only). Returns { TAB: { headers, rows } }. */
 export async function readForeignTables(sheet, tabs) {
   const have = new Set(await tabTitles(sheet));
@@ -198,8 +210,6 @@ export async function updateRowsById(tab, idField, patches) {
 export async function updateRowById(tab, idField, id, patch) {
   return updateRowsById(tab, idField, [{ id, patch }]);
 }
-
-let sheetIds = null;
 
 async function sheetIdOf(tab) {
   if (!sheetIds || !(tab in sheetIds)) {

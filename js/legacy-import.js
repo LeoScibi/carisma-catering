@@ -1,7 +1,10 @@
-// One-off import from the old multi-page Carisma Ops spreadsheet (tabs Ingredients, Suppliers,
-// SupplierIngredients, Recipes, RecipeLines, Menus, MenuLines). The old sheet is only read;
+// One-off import from the old multi-page Carisma Ops layout (tabs Ingredients, Suppliers,
+// SupplierIngredients, Recipes, RecipeLines, Menus, MenuLines). The old tabs are only read;
 // everything is copied into this app's tabs with new IDs. Stored costs are not copied: costs
 // are worked out live here.
+//
+// The old tabs can be in another spreadsheet, or in this one. In this one they first have to be
+// renamed to OLD_…, because Sheets treats "Ingredients" and "INGREDIENTS" as the same tab name.
 
 import * as sheets from './sheets.js';
 import * as store from './store.js';
@@ -14,6 +17,18 @@ const OLD_TABS = ['Suppliers', 'Ingredients', 'SupplierIngredients', 'Recipes', 
 const NEW_TABS = ['SUPPLIERS', 'INGREDIENTS', 'SUPPLIER_PRICES', 'RECIPES', 'RECIPE_LINES', 'MENUS', 'MENU_LINES'];
 const MEASURE = { weight: 'g', volume: 'ml', unit: 'each' };
 const PACK_UNITS = ['g', 'kg', 'ml', 'cl', 'l', 'each'];
+
+const KEPT = 'OLD_';
+
+/** Old-layout tabs still under their original names among `titles` (exact case). */
+export const legacyTabsIn = titles => OLD_TABS.filter(t => titles.includes(t));
+/** True if `titles` holds old tabs already set aside as OLD_…, ready to copy from. */
+export const hasKeptTabs = titles => OLD_TABS.some(t => titles.includes(KEPT + t));
+
+/** Set this spreadsheet's old tabs aside as OLD_… so the new tabs can be created. Nothing is deleted. */
+export async function setAsideLegacyTabs() {
+  await sheets.renameTabs(Object.fromEntries(OLD_TABS.map(t => [t, KEPT + t])));
+}
 
 /** Importing twice would duplicate everything, so it is only offered into an empty spreadsheet. */
 export const canImport = () => NEW_TABS.every(tab => !store.rows(tab).length);
@@ -36,9 +51,10 @@ async function copy(tab, rows, toRecord) {
 }
 
 async function run(source) {
-  if (source === spreadsheetId()) throw new Error('That is the spreadsheet this app already uses. Paste the old one.');
-  const old = await sheets.readForeignTables(source, OLD_TABS);
-  const rowsOf = tab => old[tab].rows.filter(r => text(r.ID));
+  // In this app's own spreadsheet the old tabs live under OLD_…; elsewhere under their own names.
+  const prefix = source === spreadsheetId() ? KEPT : '';
+  const old = await sheets.readForeignTables(source, OLD_TABS.map(t => prefix + t));
+  const rowsOf = tab => old[prefix + tab].rows.filter(r => text(r.ID));
   if (!rowsOf('Ingredients').length && !rowsOf('Suppliers').length && !rowsOf('Recipes').length) {
     throw new Error('No old Carisma Ops data found in that spreadsheet (it needs Ingredients, Suppliers or Recipes tabs).');
   }
@@ -122,6 +138,21 @@ async function run(source) {
   };
 }
 
+const summary = ({ counts: c, skipped }) =>
+  `Imported ${c.ingredients} ingredients, ${c.suppliers} suppliers, ${c.prices} prices, ${c.recipes} recipes and ${c.menus} menus.`
+  + (skipped.length ? ` Skipped ${skipped.length} incomplete rows (${skipped.slice(0, 5).join(', ')}${skipped.length > 5 ? '…' : ''}).` : '');
+
+/** Copy this spreadsheet's own OLD_… tabs into the new ones; returns a one-line summary. */
+export async function importKeptTabs() {
+  try {
+    return summary(await run(spreadsheetId()));
+  } catch (err) {
+    await store.loadAll().catch(() => {});
+    if (!canImport()) err.message += ' The copy stopped part-way. In the spreadsheet, delete the rows under the headers of the new (capital-letter) tabs, then try again; the OLD_ tabs still hold everything.';
+    throw err;
+  }
+}
+
 export function openLegacyImport(onDone) {
   if (!canImport()) {
     toast('This spreadsheet already has data. The import only runs into an empty one.', 'error');
@@ -133,7 +164,7 @@ export function openLegacyImport(onDone) {
       name: 'SHEET', label: 'Old Carisma Ops spreadsheet (link or ID)', required: true, wide: true,
       hint: 'The old spreadsheet is only read. Nothing in it is changed.',
     }],
-    values: { SHEET: legacySpreadsheetId() },
+    values: { SHEET: legacySpreadsheetId() || spreadsheetId() },
     submitLabel: 'Import',
     extraHtml: `<p class="notice">Copies suppliers, ingredients, supplier prices, recipes with their lines, and menus into this
       spreadsheet. Saved costs are not copied: they are recalculated here from the prices. Per-line supplier choices are
@@ -148,9 +179,7 @@ export function openLegacyImport(onDone) {
         if (!canImport()) err.message += ' The import stopped part-way: clear the rows it added to this spreadsheet (keep the header rows), refresh, and try again.';
         throw err;
       }
-      const c = result.counts;
-      toast(`Imported ${c.ingredients} ingredients, ${c.suppliers} suppliers, ${c.prices} prices, ${c.recipes} recipes and ${c.menus} menus.`
-        + (result.skipped.length ? ` Skipped ${result.skipped.length} incomplete rows (${result.skipped.slice(0, 5).join(', ')}${result.skipped.length > 5 ? '…' : ''}).` : ''));
+      toast(summary(result));
       onDone?.();
     },
   });

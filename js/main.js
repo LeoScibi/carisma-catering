@@ -3,7 +3,7 @@ import * as auth from './auth.js';
 import * as sheets from './sheets.js';
 import * as store from './store.js';
 import { toast, setReconnectHandler } from './ui.js';
-import { openLegacyImport, canImport } from './legacy-import.js';
+import { openLegacyImport, canImport, legacyTabsIn, hasKeptTabs, setAsideLegacyTabs, importKeptTabs } from './legacy-import.js';
 import * as ingredients from './views/ingredients.js';
 import * as suppliers from './views/suppliers.js';
 import * as recipes from './views/recipes.js';
@@ -28,14 +28,16 @@ function showSignin(message = '') {
   show('#signin');
 }
 
-/** First-run setup: `step` is 'client' (OAuth client ID) or 'sheet' (which spreadsheet). */
+/** First-run setup: `step` is 'client' (OAuth client ID), 'sheet' (which spreadsheet) or 'convert' (old layout). */
 function showSetup(step, message = '') {
   const el = $('#setup-msg');
   el.textContent = message;
   el.hidden = !message;
   $('#setup-client').hidden = step !== 'client';
   $('#setup-sheet').hidden = step !== 'sheet';
+  $('#setup-convert').hidden = step !== 'convert';
   $('#setup-create').disabled = false;
+  $('#setup-convert-btn').disabled = false;
   show('#setup');
 }
 
@@ -73,17 +75,26 @@ async function start() {
     $('#sheet-link').href = `https://docs.google.com/spreadsheets/d/${spreadsheetId()}/edit`;
 
     show('#loading', 'Preparing the spreadsheet…');
+    // A spreadsheet still in the old multi-page layout has to be converted before the new tabs fit.
+    const titles = await sheets.tabTitles();
+    if (legacyTabsIn(titles).length) { showSetup('convert'); return; }
     const { createdTabs, addedColumns } = await sheets.ensureSchema(SCHEMA);
 
     show('#loading', 'Loading data…');
     await store.loadAll();
+    let imported = '';
+    if (canImport() && hasKeptTabs(titles)) {
+      show('#loading', 'Copying your data into the new layout…');
+      imported = await importKeptTabs();
+    }
 
     show('#app');
     $('#banner').hidden = true;
     route();
-    if (createdTabs.length) toast(`Set up spreadsheet tabs: ${createdTabs.join(', ')}`);
+    if (imported) toast(imported);
+    else if (createdTabs.length) toast(`Set up spreadsheet tabs: ${createdTabs.join(', ')}`);
     // A brand-new spreadsheet, in a browser that used the old app: offer to bring the data across.
-    if (canImport() && legacySpreadsheetId()) openLegacyImport(route);
+    if (canImport() && legacySpreadsheetId() && legacySpreadsheetId() !== spreadsheetId()) openLegacyImport(route);
     const added = Object.entries(addedColumns);
     if (added.length) toast(`Added missing columns: ${added.map(([t, cols]) => `${t} (${cols.join(', ')})`).join('; ')}`);
   } catch (err) {
@@ -147,6 +158,18 @@ async function handleCreateSheet() {
   }
 }
 
+async function handleConvert() {
+  $('#setup-convert-btn').disabled = true;
+  try {
+    show('#loading', 'Setting the old tabs aside…');
+    await setAsideLegacyTabs();
+    await start();
+  } catch (err) {
+    if (err instanceof auth.AuthError) showSignin(err.message);
+    else showSetup('convert', err.message || String(err));
+  }
+}
+
 async function handleUseSheet(e) {
   e.preventDefault();
   const id = sheetIdFrom(e.target.elements.sheet.value);
@@ -177,6 +200,7 @@ async function boot() {
   });
   $('#setup-sheet').addEventListener('submit', handleUseSheet);
   $('#setup-create').addEventListener('click', handleCreateSheet);
+  $('#setup-convert-btn').addEventListener('click', handleConvert);
   $('#import-btn').addEventListener('click', () => { $('.account').open = false; openLegacyImport(route); });
   $('#signin-btn').addEventListener('click', handleSignIn);
   $('#reconnect-btn').addEventListener('click', handleReconnect);
