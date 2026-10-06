@@ -1,166 +1,146 @@
-<!DOCTYPE html>
-<html lang="en">
+<!doctype html>
+<html lang="en-GB">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#1c1c1c">
-<link rel="icon" href="assets/logo-badge.png" type="image/png">
-<link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
-<title>Carisma Ops — Dashboard</title>
-<script src="https://accounts.google.com/gsi/client" async defer></script>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Aboreto&family=Montserrat:wght@400;500;600;700&display=swap">
-<link rel="stylesheet" href="css/style.css?v=13">
-</head>
-<body>
-
-<header class="topbar">
-  <a class="brand" href="index.html" aria-label="Carisma Ops home">
-    <img src="assets/logo-badge.png" alt="" width="38" height="38">
-    <span class="brand-name">Carisma</span>
-    <span class="brand-sub">Ops</span>
-  </a>
-  <nav class="nav" aria-label="Main">
-    <a href="ingredients.html">
-      <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 19c0-8 6-14 14-14 0 8-6 14-14 14zM5 19l7-7"/></svg>
-      <span>Ingredients</span>
-    </a>
-    <a href="suppliers.html">
-      <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h11v10H3zM14 10h4l3 3v3h-7"/><circle cx="7" cy="18" r="2"/><circle cx="17" cy="18" r="2"/></svg>
-      <span>Suppliers</span>
-    </a>
-    <a href="supplier-ingredients.html">
-      <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12.5 3H5a2 2 0 0 0-2 2v7.5a2 2 0 0 0 .59 1.41l8.5 8.5a2 2 0 0 0 2.82 0l6.5-6.5a2 2 0 0 0 0-2.82l-8.5-8.5A2 2 0 0 0 12.5 3z"/><circle cx="8" cy="8" r="1.3"/></svg>
-      <span>Prices</span>
-    </a>
-    <a href="recipes.html">
-      <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4h11a2 2 0 0 1 2 2v14H7a2 2 0 0 1-2-2zM5 18a2 2 0 0 1 2-2h11M9 8h5"/></svg>
-      <span>Recipes</span>
-    </a>
-    <a href="menu.html">
-      <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M8.5 9h7M8.5 12.5h7M8.5 16h4"/></svg>
-      <span>Menus</span>
-    </a>
-  </nav>
-  <div class="top-actions">
-    <details class="account">
-      <summary class="avatar" aria-label="More pages" title="More">
-        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
-      </summary>
-      <div class="menu">
-        <a class="menu-item active" href="index.html">Dashboard &amp; sign-in</a>
-        <a class="menu-item" href="import.html">Import products</a>
-        <a class="menu-item" href="setup.html">Sheet setup</a>
-      </div>
-    </details>
-  </div>
-</header>
-
-<main>
-  <div class="page-head">
-    <div>
-      <p class="overline">Carisma Ops</p>
-      <h1>Dashboard</h1>
-    </div>
-    <img class="page-logo" src="assets/logo-light.png" alt="Carisma Catering" width="96" height="96">
-  </div>
-  <p class="sub">Internal operations tools for Carisma Catering.</p>
-
-  <div class="card">
-    <div id="authArea">
-      <label style="margin-top:0;">Google OAuth Client ID</label>
-      <input id="clientId" placeholder="XXXXXXXXX.apps.googleusercontent.com">
-      <label>Spreadsheet ID</label>
-      <input id="spreadsheetId" placeholder="Found in the sheet's URL between /d/ and /edit">
-      <button id="saveConfigBtn" type="button">Save config</button>
-      <button id="signInBtn" type="button" class="secondary">Sign in with Google</button>
-    </div>
-    <div id="status" class="status-line"></div>
-  </div>
-
-  <h2>Tools</h2>
-  <div class="card-grid">
-    <a class="nav-card" href="setup.html">
-      <div class="title">Sheet Setup</div>
-      <div class="desc">Creates the required tabs and header rows in your spreadsheet automatically. Run this first.</div>
-    </a>
-    <a class="nav-card" href="ingredients.html">
-      <div class="title">Ingredients</div>
-      <div class="desc">Generic ingredient master list — no pricing here, just name, category, and how it's used: weight, volume, or unit.</div>
-    </a>
-    <a class="nav-card" href="suppliers.html">
-      <div class="title">Suppliers</div>
-      <div class="desc">Your supplier list — name and contact details.</div>
-    </a>
-    <a class="nav-card" href="supplier-ingredients.html">
-      <div class="title">Price Lists</div>
-      <div class="desc">Links an ingredient to a supplier with pack size, pack unit, and price. This is where cost lives.</div>
-    </a>
-    <a class="nav-card" href="recipes.html">
-      <div class="title">Recipes</div>
-      <div class="desc">Build recipes from ingredients and other recipes (sub-recipes). Costs to the cheapest supplier by default, with manual override per line.</div>
-    </a>
-  </div>
-
-  <h2>How the data fits together</h2>
-  <div class="card">
-    <p style="margin:0; font-size:13px; color:var(--muted); line-height:1.6;">
-      After saving your config and signing in, go to <strong>Setup</strong> to auto-create the five
-      tabs this app needs: <strong>Ingredients</strong>, <strong>Suppliers</strong>,
-      <strong>SupplierIngredients</strong>, <strong>Recipes</strong>, and <strong>RecipeLines</strong>.
-      Ingredients are generic and carry no cost; pricing lives on SupplierIngredients, since the same
-      ingredient can cost differently depending on the supplier. A recipe can include ingredients
-      <em>or</em> other recipes as sub-recipe components — both convert through the same weight,
-      volume, or unit family, metric only. Sign-in lasts about an hour — if a page shows an auth
-      error, come back here and sign in again.
-    </p>
-  </div>
-</main>
-
-<script src="js/config.js?v=2"></script>
-<script>
-  const status = document.getElementById('status');
-  const signInBtn = document.getElementById('signInBtn');
-  let tokenClient = null;
-
-  function setStatus(msg, kind) {
-    status.textContent = msg;
-    status.className = 'status-line' + (kind ? ' ' + kind : '');
-  }
-
-  function refreshSignedInUI() {
-    const token = tryResumeSession();
-    if (token) {
-      setStatus('Signed in — session active.', 'ok');
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Carisma Ops</title>
+  <meta name="theme-color" content="#1c1c1c">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Carisma Ops">
+  <link rel="icon" href="assets/logo-badge.png" type="image/png">
+  <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Aboreto&family=Montserrat:wght@400;500;600;700&display=swap">
+  <!-- Release version. Bump it (and the two ?v= below) on every deploy so browsers fetch
+       all files fresh together instead of mixing cached old modules with new ones.
+       Every module in js/ must be listed here. -->
+  <script type="importmap">
+  {
+    "imports": {
+      "./js/auth.js": "./js/auth.js?v=2026-10-06.1",
+      "./js/config.js": "./js/config.js?v=2026-10-06.1",
+      "./js/costing.js": "./js/costing.js?v=2026-10-06.1",
+      "./js/icons.js": "./js/icons.js?v=2026-10-06.1",
+      "./js/legacy-import.js": "./js/legacy-import.js?v=2026-10-06.1",
+      "./js/main.js": "./js/main.js?v=2026-10-06.1",
+      "./js/pdf-text.js": "./js/pdf-text.js?v=2026-10-06.1",
+      "./js/pricelist-paste.js": "./js/pricelist-paste.js?v=2026-10-06.1",
+      "./js/recipe-cost.js": "./js/recipe-cost.js?v=2026-10-06.1",
+      "./js/recipe-paste.js": "./js/recipe-paste.js?v=2026-10-06.1",
+      "./js/sheets.js": "./js/sheets.js?v=2026-10-06.1",
+      "./js/starter-ingredients.js": "./js/starter-ingredients.js?v=2026-10-06.1",
+      "./js/store.js": "./js/store.js?v=2026-10-06.1",
+      "./js/ui.js": "./js/ui.js?v=2026-10-06.1",
+      "./js/units.js": "./js/units.js?v=2026-10-06.1",
+      "./js/views/ingredients.js": "./js/views/ingredients.js?v=2026-10-06.1",
+      "./js/views/menus.js": "./js/views/menus.js?v=2026-10-06.1",
+      "./js/views/prices.js": "./js/views/prices.js?v=2026-10-06.1",
+      "./js/views/recipes.js": "./js/views/recipes.js?v=2026-10-06.1",
+      "./js/views/suppliers.js": "./js/views/suppliers.js?v=2026-10-06.1"
     }
   }
+  </script>
+  <link rel="stylesheet" href="css/app.css?v=2026-10-06.1">
+  <script type="module" src="js/main.js?v=2026-10-06.1"></script>
+</head>
+<body>
+  <div id="loading" class="screen splash">
+    <img class="splash-logo pulse" src="assets/logo-light.png" alt="Carisma Catering">
+    <p class="overline">Ops</p>
+    <p id="loading-msg" class="muted">Loading…</p>
+  </div>
 
-  window.addEventListener('load', () => {
-    const cfg = getStoredConfig();
-    document.getElementById('clientId').value = cfg.clientId;
-    document.getElementById('spreadsheetId').value = cfg.spreadsheetId;
-    refreshSignedInUI();
-  });
+  <div id="signin" class="screen splash" hidden>
+    <div class="splash-card">
+      <img class="splash-logo" src="assets/logo-light.png" alt="Carisma Catering">
+      <p class="overline">Ops</p>
+      <p class="muted">Food cost, recipes and menus for the team.</p>
+      <p id="signin-msg" class="form-error" role="alert" hidden></p>
+      <button id="signin-btn" class="btn primary block lg">Sign in with Google</button>
+      <p class="muted small">Use the Google account the Carisma spreadsheet is shared with.</p>
+    </div>
+  </div>
 
-  document.getElementById('saveConfigBtn').addEventListener('click', () => {
-    const clientId = document.getElementById('clientId').value.trim();
-    const spreadsheetId = document.getElementById('spreadsheetId').value.trim();
-    if (!clientId || !spreadsheetId) { setStatus('Enter both fields before saving.', 'error'); return; }
-    saveStoredConfig(clientId, spreadsheetId);
-    setStatus('Config saved for this browser.', 'ok');
-  });
+  <!-- First run only, while CLIENT_ID / SPREADSHEET_ID are blank in js/config.js. -->
+  <div id="setup" class="screen splash" hidden>
+    <div class="splash-card">
+      <img class="splash-logo" src="assets/logo-light.png" alt="Carisma Catering">
+      <p class="overline">Set up</p>
+      <p id="setup-msg" class="form-error" role="alert" hidden></p>
+      <form id="setup-client" class="setup-form" hidden>
+        <p class="muted">Paste the Google OAuth client ID for Carisma Ops. It's remembered in this browser.</p>
+        <input name="clientId" required autocomplete="off" placeholder="…apps.googleusercontent.com" aria-label="Google OAuth client ID">
+        <button class="btn primary block lg">Continue</button>
+      </form>
+      <form id="setup-sheet" class="setup-form" hidden>
+        <p class="muted">Carisma Ops keeps its data in a Google spreadsheet. Create a new one, or connect one that's already set up.</p>
+        <button type="button" id="setup-create" class="btn primary block lg">Create a new spreadsheet</button>
+        <p class="or-divider">or</p>
+        <input name="sheet" autocomplete="off" placeholder="Spreadsheet link or ID" aria-label="Spreadsheet link or ID">
+        <button class="btn block">Use this spreadsheet</button>
+      </form>
+    </div>
+  </div>
 
-  signInBtn.addEventListener('click', () => {
-    const clientId = document.getElementById('clientId').value.trim();
-    if (!clientId) { setStatus('Paste your OAuth Client ID first.', 'error'); return; }
-    tokenClient = initGoogleAuth({
-      clientId,
-      onToken: () => setStatus('Signed in — session active.', 'ok'),
-      onError: (err) => setStatus('Sign-in error: ' + err, 'error')
-    });
-    tokenClient.requestAccessToken();
-  });
-</script>
+  <div id="fatal" class="screen splash" hidden>
+    <div class="splash-card">
+      <img class="splash-logo" src="assets/logo-light.png" alt="Carisma Catering">
+      <h1 class="title">Something went wrong</h1>
+      <p id="fatal-msg" class="form-error" role="alert"></p>
+      <button id="retry-btn" class="btn primary block">Try again</button>
+    </div>
+  </div>
+
+  <div id="app" hidden>
+    <header class="topbar">
+      <a class="brand" href="#/ingredients" aria-label="Carisma Ops home">
+        <img src="assets/logo-badge.png" alt="">
+        <span class="brand-name">Carisma</span>
+        <span class="brand-sub">Ops</span>
+      </a>
+      <nav class="nav" aria-label="Main">
+        <a href="#/ingredients" data-route="ingredients">
+          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 19c0-8 6-14 14-14 0 8-6 14-14 14zM5 19l7-7"/></svg>
+          <span>Ingredients</span>
+        </a>
+        <a href="#/suppliers" data-route="suppliers">
+          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h11v10H3zM14 10h4l3 3v3h-7"/><circle cx="7" cy="18" r="2"/><circle cx="17" cy="18" r="2"/></svg>
+          <span>Suppliers</span>
+        </a>
+        <a href="#/recipes" data-route="recipes">
+          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4h11a2 2 0 0 1 2 2v14H7a2 2 0 0 1-2-2zM5 18a2 2 0 0 1 2-2h11M9 8h5"/></svg>
+          <span>Recipes</span>
+        </a>
+        <a href="#/menus" data-route="menus">
+          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M8.5 9h7M8.5 12.5h7M8.5 16h4"/></svg>
+          <span>Menus</span>
+        </a>
+      </nav>
+      <div class="top-actions">
+        <button id="refresh-btn" class="icon-btn on-dark" aria-label="Refresh data from the spreadsheet" title="Refresh">
+          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a8 8 0 1 1-2.4-5.7M20 4v5h-5"/></svg>
+        </button>
+        <details class="account">
+          <summary class="avatar" aria-label="Account"><span id="user-initial">·</span></summary>
+          <div class="menu">
+            <p id="user-email" class="small muted"></p>
+            <a id="sheet-link" class="menu-item" target="_blank" rel="noopener">Open the spreadsheet</a>
+            <button id="import-btn" class="menu-item">Import from the old sheet</button>
+            <button id="signout-btn" class="menu-item">Sign out</button>
+          </div>
+        </details>
+      </div>
+    </header>
+    <div id="banner" class="banner" role="alert" hidden>
+      <span>Your Google session has expired. Nothing you've typed is lost.</span>
+      <button id="reconnect-btn" class="btn primary sm">Reconnect</button>
+    </div>
+    <main id="view"></main>
+  </div>
+
+  <div id="toasts" class="toasts" aria-live="polite"></div>
 </body>
 </html>

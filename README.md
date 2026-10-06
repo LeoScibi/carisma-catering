@@ -1,101 +1,107 @@
-# Carisma Ops — Ingredients, Suppliers & Recipes (v2)
+# Carisma Ops
 
-Same architecture as before — static site, GitHub Pages, direct-to-Sheets via
-OAuth, no server — replacing the flat 15-column ingredient schema with a
-proper normalized structure: generic ingredients, suppliers, per-supplier
-pricing, and recipes that can nest other recipes as sub-recipe components.
+Food cost, recipes and menus for Carisma Catering.
+Static single-page app: plain HTML/CSS/JS, no build step, served from the repo root on GitHub Pages
+(`leoscibi.github.io/carisma-catering`). Data lives in a Google Sheet, read and written directly from
+the browser with the Sheets API v4. The app is a port of Conviviale Ops in Carisma's colours, plus Menus.
 
-## What's here
+## Setup
+
+1. **OAuth client** (Google Cloud Console → APIs & Services → Credentials): under *Authorised
+   JavaScript origins* add `https://leoscibi.github.io` and, for local development, `http://localhost:8000`.
+2. **Sheets API** must be enabled in the same Cloud project.
+3. **Client ID and spreadsheet ID** go in `CONFIG` at the top of `js/config.js`. While either is blank,
+   the app asks for it on first run and remembers it in that browser only: it asks for the client ID,
+   then offers to create a new spreadsheet or connect an existing one. Once the spreadsheet exists,
+   paste both IDs into `js/config.js` so everyone else just presses *Sign in*.
+4. **Share the spreadsheet** (edit access) with everyone who should use the app. Sharing is the
+   access control: anyone it is shared with can sign in.
+
+On sign-in the app creates any missing tabs (SUPPLIERS, INGREDIENTS, SUPPLIER_PRICES, PRICE_HISTORY,
+RECIPES, RECIPE_LINES, MENUS, MENU_LINES) with headers. If a tab exists but is missing a column, the
+column is appended at the end. Nothing is ever removed or reordered.
+
+### Importing from the old Carisma Ops sheet
+
+The earlier multi-page app used a different layout (tabs Ingredients, Suppliers, SupplierIngredients,
+Recipes, RecipeLines, Menus, MenuLines). *Account menu → Import from the old sheet* copies that data
+into the new spreadsheet with new IDs. It is offered automatically the first time, in a browser that
+used the old app. The old sheet is only read. The import runs only into an empty spreadsheet, so it
+can't duplicate anything. Not carried over: saved costs (they are recalculated), and per-line supplier
+choices (recipes use the ingredient's preferred supplier, or the cheapest).
+
+## Local development
+
+ES modules need to be served over HTTP:
+
+```bash
+python3 -m http.server 8000
 ```
-index.html                Dashboard: config, sign-in, nav
-setup.html                 Auto-creates the five required tabs + headers — run this first
-ingredients.html            Generic ingredient master list (no cost)
-suppliers.html               Supplier list
-supplier-ingredients.html     Links ingredient + supplier + pack size/unit + price (cost lives here)
-recipes.html                  Create recipes, add lines (ingredients or sub-recipes), see rolled-up cost
-css/style.css                 Shared styling
-js/config.js                  Shared config storage + Google auth
-js/sheets.js                   Shared Sheets API read/append/update/batchUpdate helpers
-js/units.js                    Shared weight/volume/unit conversion + ID generation
-```
 
-## The data model
-- **Ingredients** — generic, no price. Just name, category, and a locked
-  **measure type**: `Weight`, `Volume`, or `Unit`. This is how the ingredient
-  is always used in a recipe, regardless of how any supplier packages it.
-- **Suppliers** — just your supplier list.
-- **SupplierIngredients** — the link table, and the only place cost lives.
-  One row per ingredient + supplier combination: pack size, pack unit (must
-  be in the same family as the ingredient's measure type — kg/g for Weight,
-  L/ml for Volume, pc for Unit), price, and a calculated cost per base unit.
-  The same ingredient can have several rows here, one per supplier.
-- **Recipes** — a recipe is also a "thing" with its own measure type and
-  yield (e.g. this recipe makes 2 kg, or 500 ml, or 12 pc). That's what lets
-  a finished recipe be used as a component inside another recipe — a
-  sub-recipe, treated exactly like an ingredient once it's built.
-- **RecipeLines** — one row per component (ingredient or sub-recipe) inside
-  a recipe: quantity, unit, and for ingredients, which supplier's price to
-  use. Defaults to the cheapest supplier automatically but can be manually
-  overridden per line. Recipe totals recalculate and get written back to the
-  Recipes tab every time a line is added.
+Then open http://localhost:8000.
 
-Everything converts through the same simple logic: grams ↔ kilos,
-millilitres ↔ litres — metric only, no imperial, no generic conversion
-engine, just fixed multipliers within each family.
+## Releasing
 
-## Spreadsheet setup — automatic
-Point the app at any spreadsheet (existing or brand new) and go to
-**Setup**. It creates whichever of the five required tabs are missing —
-`Ingredients`, `Suppliers`, `SupplierIngredients`, `Recipes`, `RecipeLines`
-— and writes the correct header row into any tab that's still empty. Safe
-to re-run any time; it never overwrites a tab that already has a header.
+GitHub Pages lets browsers cache files for 10 minutes. To stop a phone mixing a new page with
+old cached scripts, every file link carries a version (`?v=…`). On each release, bump the version
+in `index.html` (one search-and-replace), and add any new `js/` module to the import map there.
 
-## Suggested order of use
-1. **Setup** — create the tabs.
-2. **Ingredients** — add your generic ingredients with their measure type.
-3. **Suppliers** — add your suppliers.
-4. **Supplier Prices** — for each ingredient, add at least one supplier's
-   pack size, pack unit, and price.
-5. **Recipes** — create a recipe (e.g. a sub-recipe like a base sauce
-   first), add its lines, then use it as a component inside another recipe.
+## Layout
 
-## Deploying
-Same GitHub Pages repo as before (`carisma-catering`,
-`leoscibi.github.io/carisma-catering`):
+| File | Purpose |
+| --- | --- |
+| `js/config.js` | Client ID, spreadsheet ID, data model (tabs, headers, column types), allergen list |
+| `js/auth.js` | Google Identity Services token client, session expiry |
+| `js/sheets.js` | Sheets API wrapper: schema setup, read tables by header, append, update row by ID |
+| `js/store.js` | In-memory cache, type coercion, ID generation (`SUP-0001`, `ING-0001`, `REC-0001`) |
+| `js/costing.js` | Derived costs: price-list unit costs, preferred-else-cheapest price, yield |
+| `js/recipe-cost.js` | Live recipe costing: line costs, sub-recipes, cost per portion, GP, allergen roll-up, loop guard |
+| `js/legacy-import.js` | One-off import from the old Carisma Ops spreadsheet |
+| `js/starter-ingredients.js` | Starter list of common ingredients for the "Add many" screen |
+| `js/pricelist-paste.js` | Price-list parser (case vs per-kg price, pack sizes, sections) and product matching |
+| `js/pdf-text.js` | Reads a PDF into text rows (pdf.js) |
+| `js/units.js` | Recipe measurement families (weight / volume / each) and conversions |
+| `js/recipe-paste.js` | Paste-a-recipe parser |
+| `js/ui.js` | Escaping, formatting, toasts, form dialog |
+| `js/views/*.js` | One module per screen; `prices.js` is the shared price-list entry form |
+| `js/icons.js` | Line icons |
+| `assets/` | Carisma logo (full, round badge) and home-screen icons |
 
-1. Copy this folder's contents into the repo (e.g. replacing the old `app/`
-   folder, or into a new `app2/` if you want to keep both versions live).
-2. Commit and push — GitHub Pages serves it automatically.
-3. Open `index.html` on the live site, paste your OAuth Client ID and
-   Spreadsheet ID (can be the same spreadsheet as before, or a fresh one —
-   this uses five new tab names, so it won't collide with the old
-   `Ingredients`/`MenuItems`/`Quotes` tabs if you point it at the same file).
-4. Go to **Setup** and click **Check & create tabs**.
-5. Add ingredients → suppliers → supplier prices → recipes, in that order.
+## Brand
 
-No changes needed to your OAuth Client ID or authorized origin.
+White `#ffffff`, near-black `#1c1c1c` and yellow `#f6d201`, defined as variables at the top of
+`css/app.css` along with the greys derived from them. Yellow is a fill only (active tab, add button,
+focus ring); text stays near-black. Type is Aboreto (headings, uppercase) and Montserrat (text).
 
-## Known limitations
-- No edit/delete yet on any tab — add + view only, same as the previous
-  version. Fixing a mistake currently means editing the row directly in
-  Google Sheets.
-- A recipe's cost only recalculates when a line is *added* — if you edit a
-  supplier's price after the fact, existing recipe lines won't reflect the
-  new price until you re-add a line (or we build a "recalculate" button).
-- No circular-reference check — nothing stops a recipe being added as a
-  sub-recipe of itself two levels down. Keep sub-recipe chains shallow for
-  now.
-- The old `Ingredients`/`MenuItems`/`Quotes` v1 app (dashboard, ingredient
-  form, quote builder) still exists separately — this is a parallel v2
-  focused purely on the costing model. Once this is validated, the quote
-  builder can be rebuilt on top of it to pull real recipe costs instead of
-  the flat `MenuItems` placeholder pricing.
+The layout is designed for phones first: bottom tab bar, floating add button, card lists and
+full-screen forms. It can be added to the home screen and opens like an app.
 
-## Suggested next steps
-1. Add a "Recalculate cost" button on Recipes to re-sum an existing
-   recipe's lines on demand, for when a supplier price changes.
-2. Edit/delete for all five tabs (needs row-number tracking).
-3. Rebuild the quote builder on top of real recipe costs instead of
-   placeholder `MenuItems` pricing.
-4. A simple margin/markup field on Recipes, so quoted price vs. cost is
-   visible at a glance.
+## Data rules
+
+- Row 1 is headers. Columns are matched by header name, so you can reorder columns or add your
+  own in the sheet. The app preserves them.
+- Records link by ID, never by name.
+- Only raw inputs are stored. Costs are computed in the app.
+- Ingredients are generic: name, category, how they're measured (`UNIT`: g / ml / each), yield,
+  allergens, and `DIETARY` (Vegan, Vegetarian, Gluten-free). Prices live in **SUPPLIER_PRICES**, one
+  row per supplier + ingredient + pack, so an ingredient can have several suppliers (and a supplier
+  several pack sizes).
+- An ingredient's `SUPPLIER_ID` is its *preferred* supplier. Recipes use that supplier's price;
+  if it's blank or the supplier has no price, the cheapest price per kg / L / each is used.
+- Pack sizes are stored in `g`, `ml` or `each`. Forms accept kg, cl and L and convert them.
+- Pack prices are ex VAT. Every new or changed price appends a row to PRICE_HISTORY with the date,
+  supplier and an optional invoice reference.
+- A supplier's price list can be uploaded as a PDF or pasted (from a spreadsheet or email). Products
+  are matched to your ingredients; re-uploading next month's list updates prices in place, matched by
+  product code, or by the supplier's product name.
+- Ingredients are retired by unticking ACTIVE rather than deleted, so recipes keep working.
+- Recipe costs are never stored. Cost per portion, GP and allergens are recalculated from the
+  current ingredient prices every time, through any depth of sub-recipes.
+- A recipe line's ITEM_TYPE is `ING` or `SUB`. Sub-recipes can be used by weight/volume (needs a
+  batch yield) or by `portion` (needs PORTIONS). A sub-recipe that would loop back into the
+  recipe can't be added.
+- GP% is on the net price: SELL_PRICE is inc VAT, VAT_RATE defaults to 20% and TARGET_GP% to 70%.
+- A menu (MENUS, MENU_LINES) lists recipes and how much of each is needed, in portions or in the
+  recipe's batch-yield unit. Its shopping list is derived: sub-recipes are expanded down to raw
+  ingredients, quantities are combined across the menu and grossed up for yield, and each line is
+  costed at the price recipes use. A recipe that is on a menu can't be deleted.

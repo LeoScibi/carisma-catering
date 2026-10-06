@@ -1,85 +1,58 @@
-// Shared logic for the three measurement "families" used across Ingredients,
-// SupplierIngredients and RecipeLines. Everything reduces to one of these —
-// weight, volume, or unit — with a base measure (kg / L / pc) and a
-// convertible display unit. Metric only, deliberately simple: no generic
-// unit-conversion engine, just fixed multipliers within each family.
+// Measurement families for recipe quantities. Everything reduces to a base unit:
+// weight → g, volume → ml, each → each. Metric only, fixed multipliers.
+//
+// tsp/tbsp are exact for volume (5 / 15 ml). For weight they're an average (~3 g per
+// teaspoon of a typical ground spice): good enough for costing, not for baking.
 
-// tsp/tbsp are exact for Volume (1 tsp = 5ml, 1 tbsp = 15ml). For Weight
-// they're necessarily an average — a teaspoon of paprika and a teaspoon of
-// salt don't weigh the same — based on ~3g per teaspoon for a typical
-// ground spice. Good enough for costing, not for baking chemistry.
-const MEASURE_FAMILIES = {
-  Weight: { base: 'kg', units: { kg: 1, g: 0.001, tsp: 0.003, tbsp: 0.009 } },
-  Volume: { base: 'L', units: { L: 1, ml: 0.001, tsp: 0.005, tbsp: 0.015 } },
-  Unit:   { base: 'pc', units: { pc: 1 } }
+export const BASE = { weight: 'g', volume: 'ml', each: 'each' };
+
+const UNITS = {
+  g: ['weight', 1], kg: ['weight', 1000],
+  ml: ['volume', 1], cl: ['volume', 10], L: ['volume', 1000],
+  each: ['each', 1],
+};
+const SPOONS = { tsp: { weight: 3, volume: 5 }, tbsp: { weight: 9, volume: 15 } };
+
+const FAMILY_UNITS = {
+  weight: ['g', 'kg', 'tsp', 'tbsp'],
+  volume: ['ml', 'cl', 'L', 'tsp', 'tbsp'],
+  each: ['each'],
 };
 
-function baseUnitFor(measureType) {
-  return MEASURE_FAMILIES[measureType] ? MEASURE_FAMILIES[measureType].base : '';
+/** Canonical spelling: 'l' → 'L', 'KG' → 'kg', 'portions' → 'portion'. */
+export function normUnit(u) {
+  const s = String(u ?? '').trim();
+  if (/^l$/i.test(s)) return 'L';
+  const low = s.toLowerCase();
+  if (low === 'portions') return 'portion';
+  return low;
 }
 
-function unitsForType(measureType) {
-  return MEASURE_FAMILIES[measureType] ? Object.keys(MEASURE_FAMILIES[measureType].units) : [];
+/** Family of a concrete unit, or null for spoons (which belong to both) and unknowns. */
+export function familyOf(unit) {
+  return UNITS[normUnit(unit)]?.[0] ?? null;
 }
 
-// Display label for a unit option — flags the two units whose conversion is
-// an average rather than an exact figure, so anyone picking them can see that.
-function unitLabel(measureType, unit) {
-  return (measureType === 'Weight' && (unit === 'tsp' || unit === 'tbsp')) ? unit + ' (≈ avg.)' : unit;
+export function unitsFor(family) {
+  return FAMILY_UNITS[family] ?? [];
 }
 
-// A recipe/sub-recipe's own yield, measured in "Unit", is counted in portions —
-// callers use this instead of unitLabel() specifically for a recipe's yield amount
-// (pluralised when `amount` is given). Ingredient-level piece counts (eggs, cloves,
-// cans) are a different thing and keep the plain "pc" from unitLabel().
-function portionUnit(measureType, unit, amount) {
-  if (measureType !== 'Unit' || unit !== 'pc') return unitLabel(measureType, unit);
-  return amount === 1 ? 'portion' : 'portions';
+/** Convert `qty unit` to the family's base unit, or null if the unit doesn't belong to the family. */
+export function toBase(family, qty, unit) {
+  const u = normUnit(unit);
+  const n = Number(qty);
+  if (!isFinite(n)) return null;
+  if (UNITS[u] && UNITS[u][0] === family) return n * UNITS[u][1];
+  if (SPOONS[u] && SPOONS[u][family]) return n * SPOONS[u][family];
+  return null;
 }
 
-// Same idea for a "£x per <unit>" rate — singular, matching how "per kg"/"per L"
-// already read.
-function portionRateUnit(measureType) {
-  return measureType === 'Unit' ? 'portion' : baseUnitFor(measureType);
+export function unitLabel(family, unit) {
+  const u = normUnit(unit);
+  return family === 'weight' && SPOONS[u] ? `${u} (≈${SPOONS[u].weight} g)` : u;
 }
 
-// Converts an amount in `unit` to the family's base unit (kg, L, or pc).
-function toBaseAmount(measureType, amount, unit) {
-  const fam = MEASURE_FAMILIES[measureType];
-  if (!fam || !(unit in fam.units)) return amount;
-  return amount * fam.units[unit];
-}
-
-// Generates the next sequential ID for a prefix, e.g. nextId(rows, 'ING') -> 'ING004'
-// based on the highest existing number found in column A of the given rows
-// (rows includes the header row as element 0).
-function nextId(rows, prefix, padLength = 3) {
-  let max = 0;
-  for (let i = 1; i < rows.length; i++) {
-    const cell = (rows[i][0] || '').toString();
-    if (cell.startsWith(prefix)) {
-      const n = parseInt(cell.slice(prefix.length), 10);
-      if (!isNaN(n) && n > max) max = n;
-    }
-  }
-  return prefix + String(max + 1).padStart(padLength, '0');
-}
-
-// Converts a 1-based column number to a spreadsheet column letter (1 -> A, 27 -> AA).
-function colLetter(n) {
-  let s = '';
-  while (n > 0) {
-    const rem = (n - 1) % 26;
-    s = String.fromCharCode(65 + rem) + s;
-    n = Math.floor((n - 1) / 26);
-  }
-  return s;
-}
-
-function fmtMoney(n) {
-  return '£' + (isFinite(n) ? n : 0).toFixed(4).replace(/0+$/, '').replace(/\.$/, '.00');
-}
-
-function fmtMoney2(n) {
-  return '£' + (isFinite(n) ? n : 0).toFixed(2);
+/** Quantity for display: at most 2 decimals, no trailing zeros. */
+export function fmtQty(n) {
+  return isFinite(n) ? String(+Number(n).toFixed(2)) : '';
 }
